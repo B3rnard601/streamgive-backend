@@ -154,6 +154,12 @@ Emitted when a previously-approved NGO has its verified status revoked on-chain.
 - `ownerAddress` — the NGO owner's Stellar account address.
 - `ngoId` — the internal (database) id of the revoked NGO.
 
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for local setup, how to run tests, and
+how to open a pull request. The full project-wide contribution guide lives in
+[streamgive-docs](https://github.com/streamgive/streamgive-docs).
+
 ## Related repositories
 
 - [streamgive-contracts](https://github.com/streamgive/streamgive-contracts) — Soroban smart contracts

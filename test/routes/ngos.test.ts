@@ -62,6 +62,107 @@ describe('GET /ngos', () => {
 
     await app.close();
   });
+  it('returns NGOs oldest first when sort=oldest', async () => {
+    const app = buildServer();
+
+    for (const char of ['A', 'B', 'C']) {
+      await prisma.ngo.create({
+        data: { ownerAddress: fakeAddress(char), name: `NGO ${char}`, verified: true },
+      });
+    }
+
+    const response = await app.inject({ method: 'GET', url: '/ngos?sort=oldest' });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    const names = body.ngos.map((n: { name: string }) => n.name);
+    expect(names).toEqual(['NGO A', 'NGO B', 'NGO C']);
+
+    await app.close();
+  });
+
+  it('returns NGOs alphabetically when sort=name', async () => {
+    const app = buildServer();
+
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('C'), name: 'Zeta NGO', verified: true },
+    });
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('A'), name: 'Alpha NGO', verified: true },
+    });
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('B'), name: 'Midway NGO', verified: true },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/ngos?sort=name' });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    const names = body.ngos.map((n: { name: string }) => n.name);
+    expect(names).toEqual(['Alpha NGO', 'Midway NGO', 'Zeta NGO']);
+
+    await app.close();
+  });
+
+  it('400s on an unknown sort value', async () => {
+    const app = buildServer();
+
+    const response = await app.inject({ method: 'GET', url: '/ngos?sort=invalid' });
+    expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
+
+  it('filters by name when q is provided (case-insensitive)', async () => {
+    const app = buildServer();
+
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('A'), name: 'Save The Oceans', verified: true },
+    });
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('B'), name: 'Plant A Tree', verified: true },
+    });
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('C'), name: 'Ocean Cleanup Fund', verified: true },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/ngos?q=ocean' });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    const names: string[] = body.ngos.map((n: { name: string }) => n.name);
+    expect(names).toContain('Save The Oceans');
+    expect(names).toContain('Ocean Cleanup Fund');
+    expect(names).not.toContain('Plant A Tree');
+
+    await app.close();
+  });
+
+  it('returns empty list when q matches nothing', async () => {
+    const app = buildServer();
+
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('A'), name: 'Green Earth', verified: true },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/ngos?q=zzznomatch' });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body.ngos).toHaveLength(0);
+
+    await app.close();
+  });
+
+  it('400s when q exceeds 100 characters', async () => {
+    const app = buildServer();
+
+    const longQ = 'a'.repeat(101);
+    const response = await app.inject({ method: 'GET', url: `/ngos?q=${longQ}` });
+    expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
 });
 
 describe('GET /ngos/lookup', () => {

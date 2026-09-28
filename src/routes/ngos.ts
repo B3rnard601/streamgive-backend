@@ -5,9 +5,14 @@ import { prisma } from '../db.js';
 
 const idParamSchema = z.object({ id: z.string().uuid() });
 
+const sortSchema = z.enum(['newest', 'oldest', 'name']).default('newest');
+
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(100),
   cursor: z.string().uuid().optional(),
+  sort: sortSchema,
+  // Name search: case-insensitive substring match, capped to prevent abuse.
+  q: z.string().max(100).optional(),
 });
 
 const lookupQuerySchema = z.object({
@@ -72,11 +77,21 @@ export async function ngoRoutes(app: FastifyInstance): Promise<void> {
         .code(400)
         .send({ error: 'invalid_request', details: parsedQuery.error.flatten() });
     }
-    const { limit, cursor } = parsedQuery.data;
+    const { limit, cursor, sort, q } = parsedQuery.data;
+
+    const orderBy: { createdAt: 'asc' | 'desc' } | { name: 'asc' } =
+      sort === 'oldest'
+        ? { createdAt: 'asc' }
+        : sort === 'name'
+          ? { name: 'asc' }
+          : { createdAt: 'desc' };
 
     const rows = await prisma.ngo.findMany({
-      where: { verified: true },
-      orderBy: { createdAt: 'desc' },
+      where: {
+        verified: true,
+        ...(q ? { name: { contains: q, mode: 'insensitive' } } : {}),
+      },
+      orderBy,
       take: limit + 1,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
     });
