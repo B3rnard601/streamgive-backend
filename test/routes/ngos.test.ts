@@ -112,6 +112,57 @@ describe('GET /ngos', () => {
 
     await app.close();
   });
+
+  it('filters by name when q is provided (case-insensitive)', async () => {
+    const app = buildServer();
+
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('A'), name: 'Save The Oceans', verified: true },
+    });
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('B'), name: 'Plant A Tree', verified: true },
+    });
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('C'), name: 'Ocean Cleanup Fund', verified: true },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/ngos?q=ocean' });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    const names: string[] = body.ngos.map((n: { name: string }) => n.name);
+    expect(names).toContain('Save The Oceans');
+    expect(names).toContain('Ocean Cleanup Fund');
+    expect(names).not.toContain('Plant A Tree');
+
+    await app.close();
+  });
+
+  it('returns empty list when q matches nothing', async () => {
+    const app = buildServer();
+
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('A'), name: 'Green Earth', verified: true },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/ngos?q=zzznomatch' });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body.ngos).toHaveLength(0);
+
+    await app.close();
+  });
+
+  it('400s when q exceeds 100 characters', async () => {
+    const app = buildServer();
+
+    const longQ = 'a'.repeat(101);
+    const response = await app.inject({ method: 'GET', url: `/ngos?q=${longQ}` });
+    expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
 });
 
 describe('GET /ngos/lookup', () => {
