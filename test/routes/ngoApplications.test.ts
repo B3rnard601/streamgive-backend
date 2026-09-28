@@ -229,4 +229,36 @@ describe('admin NGO application review', () => {
 
     await app.close();
   });
+
+  it('rejects approving an already rejected application with 409 already_reviewed', async () => {
+    const app = buildServer();
+
+    const application = await prisma.ngoApplication.create({
+      data: validApplicationPayload({ status: 'REJECTED' }),
+    });
+    const url = `/ngo-applications/${application.id}/approve`;
+    const headers = signAdminRequest(adminKeypair, 'POST', url);
+
+    const response = await app.inject({ method: 'POST', url, headers, payload: {} });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toBe('already_reviewed');
+
+    await app.close();
+  });
+
+  it('rejects rejecting an already approved application with 409 already_reviewed', async () => {
+    const app = buildServer();
+
+    const application = await prisma.ngoApplication.create({
+      data: validApplicationPayload({ status: 'APPROVED' }),
+    });
+    const url = `/ngo-applications/${application.id}/reject`;
+    const headers = signAdminRequest(adminKeypair, 'POST', url);
+
+    const response = await app.inject({ method: 'POST', url, headers, payload: {} });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toBe('already_reviewed');
+
+    await app.close();
+  });
 });
