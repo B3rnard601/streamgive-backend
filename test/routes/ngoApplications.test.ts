@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../src/db.js';
 import { buildServer } from '../../src/server.js';
 import { fakeAddress, resetDb } from '../helpers/db.js';
+import { sep53Hash } from '../../src/middleware/adminAuth.js';
 import { signAdminRequest } from '../helpers/adminAuth.js';
 
 const adminKeypair = Keypair.random();
@@ -195,6 +196,39 @@ describe('admin NGO application review', () => {
     const headers = signAdminRequest(adminKeypair, 'POST', '/ngo-applications/other-id/approve');
 
     const response = await app.inject({ method: 'POST', url: realUrl, headers, payload: {} });
+    expect(response.statusCode).toBe(401);
+
+    await app.close();
+  });
+
+  it('allows a valid admin signature encoded as hex', async () => {
+    const app = buildServer();
+    const timestamp = Date.now().toString();
+    const payload = `GET:/ngo-applications:${timestamp}`;
+    const signatureHex = Buffer.from(adminKeypair.sign(sep53Hash(payload))).toString('hex');
+    const headers = {
+      'x-admin-address': adminKeypair.publicKey(),
+      'x-admin-signature': signatureHex,
+      'x-admin-timestamp': timestamp,
+    };
+
+    const response = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
+    expect(response.statusCode).toBe(200);
+
+    await app.close();
+  });
+
+  it('rejects a 64-byte hex signature that does not verify with 401', async () => {
+    const app = buildServer();
+    const timestamp = Date.now().toString();
+    const invalidHexSignature = '00'.repeat(64); // 64 bytes in hex
+    const headers = {
+      'x-admin-address': adminKeypair.publicKey(),
+      'x-admin-signature': invalidHexSignature,
+      'x-admin-timestamp': timestamp,
+    };
+
+    const response = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
     expect(response.statusCode).toBe(401);
 
     await app.close();
