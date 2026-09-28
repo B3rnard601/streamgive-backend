@@ -155,6 +155,97 @@ describe('GET /streams', () => {
 
     await app.close();
   });
+
+  it('filters by ngoAddress and returns only matching streams', async () => {
+    const app = buildServer();
+
+    const donor = await prisma.donor.create({ data: { address: fakeAddress('A') } });
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('B'), name: 'Target NGO', verified: true },
+    });
+    const otherNgo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('C'), name: 'Other NGO', verified: true },
+    });
+
+    await prisma.stream.create({
+      data: {
+        onChainId: 1n,
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('D'),
+        rate: '1',
+        balance: '100',
+        withdrawn: '0',
+      },
+    });
+    await prisma.stream.create({
+      data: {
+        onChainId: 2n,
+        donorId: donor.id,
+        ngoId: otherNgo.id,
+        tokenAddress: fakeAddress('D'),
+        rate: '1',
+        balance: '200',
+        withdrawn: '0',
+      },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/streams?ngoAddress=${ngo.ownerAddress}`,
+    });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body.streams).toHaveLength(1);
+    expect(body.streams[0].onChainId).toBe('1');
+
+    await app.close();
+  });
+
+  it('returns empty list when ngoAddress matches no NGO', async () => {
+    const app = buildServer();
+
+    const donor = await prisma.donor.create({ data: { address: fakeAddress('A') } });
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('B'), name: 'NGO', verified: true },
+    });
+
+    await prisma.stream.create({
+      data: {
+        onChainId: 1n,
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('D'),
+        rate: '1',
+        balance: '100',
+        withdrawn: '0',
+      },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/streams?ngoAddress=${fakeAddress('Z')}`,
+    });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body.streams).toHaveLength(0);
+
+    await app.close();
+  });
+
+  it('400s on a malformed ngoAddress', async () => {
+    const app = buildServer();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/streams?ngoAddress=not-an-address',
+    });
+    expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
 });
 
 describe('GET /streams/:id', () => {
