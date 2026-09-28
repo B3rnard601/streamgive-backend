@@ -246,6 +246,53 @@ describe('GET /streams', () => {
 
     await app.close();
   });
+
+  it('filters by status combined with donor filter', async () => {
+    const app = buildServer();
+
+    const donor = await prisma.donor.create({ data: { address: fakeAddress('A') } });
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('B'), name: 'NGO', verified: true },
+    });
+
+    await prisma.stream.create({
+      data: {
+        onChainId: 1n,
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('D'),
+        rate: '1',
+        balance: '100',
+        withdrawn: '0',
+        status: 'ACTIVE',
+      },
+    });
+    await prisma.stream.create({
+      data: {
+        onChainId: 2n,
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('D'),
+        rate: '1',
+        balance: '200',
+        withdrawn: '0',
+        status: 'CANCELLED',
+      },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/streams?donor=${donor.address}&status=ACTIVE`,
+    });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body.streams).toHaveLength(1);
+    expect(body.streams[0].onChainId).toBe('1');
+    expect(body.streams[0].status).toBe('ACTIVE');
+
+    await app.close();
+  });
 });
 
 describe('GET /streams/:id', () => {
