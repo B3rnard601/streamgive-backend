@@ -213,4 +213,16 @@ describe('admin NGO application review', () => {
 
     await app.close();
   });
+
+  it('rejects a signature with a stale timestamp with 401', async () => {
+    const app = buildServer();
+    const staleTimestamp = (Date.now() - 6 * 60 * 1000).toString();
+    const headers = signAdminRequest(adminKeypair, 'GET', '/ngo-applications', staleTimestamp);
+
+    const response = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
+    expect(response.statusCode).toBe(401);
+    expect(response.json().error).toBe('stale_signature');
+
+    await app.close();
+  });
 });
