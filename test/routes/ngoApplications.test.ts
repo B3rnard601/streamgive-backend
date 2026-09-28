@@ -68,6 +68,36 @@ describe('POST /ngo-applications', () => {
 
     await app.close();
   });
+
+  it('rejects a new application from an already-approved NGO with 409 already_approved', async () => {
+    const app = buildServer();
+    const payload = validApplicationPayload();
+
+    await prisma.ngoApplication.create({
+      data: { ...payload, status: 'APPROVED' },
+    });
+
+    const response = await app.inject({ method: 'POST', url: '/ngo-applications', payload });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toBe('already_approved');
+
+    await app.close();
+  });
+
+  it('allows a rejected applicant to submit a new application', async () => {
+    const app = buildServer();
+    const payload = validApplicationPayload();
+
+    await prisma.ngoApplication.create({
+      data: { ...payload, status: 'REJECTED' },
+    });
+
+    const response = await app.inject({ method: 'POST', url: '/ngo-applications', payload });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().status).toBe('PENDING');
+
+    await app.close();
+  });
 });
 
 describe('GET /ngo-applications/status', () => {

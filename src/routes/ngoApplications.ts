@@ -47,10 +47,16 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
           .send({ error: 'invalid_request', details: parsed.error.flatten() });
       }
 
-      const existingPending = await prisma.ngoApplication.findFirst({
-        where: { ownerAddress: parsed.data.ownerAddress, status: 'PENDING' },
+      const existingApp = await prisma.ngoApplication.findFirst({
+        where: {
+          ownerAddress: parsed.data.ownerAddress,
+          status: { in: ['PENDING', 'APPROVED'] },
+        },
       });
-      if (existingPending) {
+      if (existingApp) {
+        if (existingApp.status === 'APPROVED') {
+          return reply.code(409).send({ error: 'already_approved' });
+        }
         return reply.code(409).send({ error: 'application_already_pending' });
       }
 
