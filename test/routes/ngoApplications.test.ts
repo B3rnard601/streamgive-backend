@@ -261,4 +261,28 @@ describe('admin NGO application review', () => {
 
     await app.close();
   });
+
+  it('returns 400 invalid_request when approving with a malformed id', async () => {
+    const app = buildServer();
+    const url = '/ngo-applications/not-a-uuid/approve';
+    const headers = signAdminRequest(adminKeypair, 'POST', url);
+
+    const response = await app.inject({ method: 'POST', url, headers, payload: {} });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe('invalid_request');
+
+    await app.close();
+  });
+
+  it('returns 400 invalid_request when rejecting with a malformed id', async () => {
+    const app = buildServer();
+    const url = '/ngo-applications/not-a-uuid/reject';
+    const headers = signAdminRequest(adminKeypair, 'POST', url);
+
+    const response = await app.inject({ method: 'POST', url, headers, payload: {} });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe('invalid_request');
+
+    await app.close();
+  });
 });
