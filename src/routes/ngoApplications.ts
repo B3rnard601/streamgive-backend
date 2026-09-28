@@ -5,7 +5,7 @@ import { prisma } from '../db.js';
 import { requireAdminSignature } from '../middleware/adminAuth.js';
 
 const applicationSchema = z.object({
-  ownerAddress: z.string().min(1),
+  ownerAddress: z.string().regex(/^G[A-Z2-7]{55}$/),
   name: z.string().min(1).max(200),
   description: z.string().min(1).max(5000),
   website: z.string().url().optional(),

@@ -56,6 +56,20 @@ describe('POST /ngo-applications', () => {
     await app.close();
   });
 
+  it('rejects a malformed ownerAddress with 400', async () => {
+    const app = buildServer();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/ngo-applications',
+      payload: validApplicationPayload({ ownerAddress: 'invalid-stellar-address' }),
+    });
+
+    expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
+
   it('rejects a second pending application from the same address with 409', async () => {
     const app = buildServer();
     const payload = validApplicationPayload();
