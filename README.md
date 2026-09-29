@@ -173,3 +173,14 @@ Early development.
 ## License
 
 Apache-2.0 — see [LICENSE](./LICENSE).
+
+
+## Local development
+
+```bash
+cp .env.example .env
+docker compose up -d postgres   # starts Postgres (+ a streamgive_test DB)
+npm install
+npm run db:migrate              # apply Prisma migrations to streamgive
+npm run db:seed                 # optional: load sample NGOs, donors and streams
+npm run dev

@@ -54,10 +54,16 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
           .send({ error: 'invalid_request', details: parsed.error.flatten() });
       }
 
-      const existingPending = await prisma.ngoApplication.findFirst({
-        where: { ownerAddress: parsed.data.ownerAddress, status: 'PENDING' },
+      const existingApp = await prisma.ngoApplication.findFirst({
+        where: {
+          ownerAddress: parsed.data.ownerAddress,
+          status: { in: ['PENDING', 'APPROVED'] },
+        },
       });
-      if (existingPending) {
+      if (existingApp) {
+        if (existingApp.status === 'APPROVED') {
+          return reply.code(409).send({ error: 'already_approved' });
+        }
         return reply.code(409).send({ error: 'application_already_pending' });
       }
 
@@ -134,20 +140,29 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
     '/ngo-applications/:id/approve',
     { preHandler: requireAdminSignature },
     async (request, reply) => {
-      const { id } = request.params as { id: string };
+      const parsedParams = idParamSchema.safeParse(request.params);
+      if (!parsedParams.success) {
+        return reply.code(400).send({ error: 'invalid_request' });
+      }
+      const { id } = parsedParams.data;
+
       const parsed = reviewBodySchema.safeParse(request.body ?? {});
       if (!parsed.success) {
         return reply.code(400).send({ error: 'invalid_request', details: parsed.error.flatten() });
       }
 
-      try {
-        return await prisma.ngoApplication.update({
-          where: { id },
-          data: { status: 'APPROVED', reviewNote: parsed.data.reviewNote },
-        });
-      } catch {
+      const application = await prisma.ngoApplication.findUnique({ where: { id } });
+      if (!application) {
         return reply.code(404).send({ error: 'not_found' });
       }
+      if (application.status !== 'PENDING') {
+        return reply.code(409).send({ error: 'already_reviewed' });
+      }
+
+      return await prisma.ngoApplication.update({
+        where: { id },
+        data: { status: 'APPROVED', reviewNote: parsed.data.reviewNote },
+      });
     },
   );
 
@@ -155,20 +170,29 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
     '/ngo-applications/:id/reject',
     { preHandler: requireAdminSignature },
     async (request, reply) => {
-      const { id } = request.params as { id: string };
+      const parsedParams = idParamSchema.safeParse(request.params);
+      if (!parsedParams.success) {
+        return reply.code(400).send({ error: 'invalid_request' });
+      }
+      const { id } = parsedParams.data;
+
       const parsed = reviewBodySchema.safeParse(request.body ?? {});
       if (!parsed.success) {
         return reply.code(400).send({ error: 'invalid_request', details: parsed.error.flatten() });
       }
 
-      try {
-        return await prisma.ngoApplication.update({
-          where: { id },
-          data: { status: 'REJECTED', reviewNote: parsed.data.reviewNote },
-        });
-      } catch {
+      const application = await prisma.ngoApplication.findUnique({ where: { id } });
+      if (!application) {
         return reply.code(404).send({ error: 'not_found' });
       }
+      if (application.status !== 'PENDING') {
+        return reply.code(409).send({ error: 'already_reviewed' });
+      }
+
+      return await prisma.ngoApplication.update({
+        where: { id },
+        data: { status: 'REJECTED', reviewNote: parsed.data.reviewNote },
+      });
     },
   );
 }

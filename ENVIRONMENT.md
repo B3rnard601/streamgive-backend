@@ -11,6 +11,7 @@ the test suite) and fill these in.
 | `NGO_REGISTRY_CONTRACT_ID`      | No*      | — (empty)                                | Deployed `ngo-registry` contract id. See `streamgive-contracts/deployments.json`. The indexer no-ops until both contract ids are set. |
 | `DONATION_VAULT_CONTRACT_ID`    | No*      | — (empty)                                | Deployed `donation-vault` contract id. Same file as above.                                       |
 | `INDEXER_POLL_INTERVAL_MS`      | No       | `5000`                                   | How often the indexer polls `getEvents`.                                                         |
+| `CORS_ORIGINS`                  | No       | `http://localhost:3001`                  | Comma-separated origins allowed to call this API from a browser.                                |
 | `ADMIN_ADDRESS`                 | No**     | — (empty)                                | Stellar public key (`G...`) that must sign requests to admin routes (`/ngo-applications` review). Admin routes 503 until this is set. Should match the `admin` configured on the deployed contracts. |
 | `NOTIFY_WEBHOOK_URL`            | No       | — (empty)                                | If set, stream lifecycle events (`stream_created`/`stream_withdrawn`/`stream_cancelled`) are POSTed here as JSON.                                |
 | `RATE_LIMIT_MAX`                | No       | `100`                                    | Global maximum number of requests allowed per time window across the API.                      |
@@ -22,3 +23,8 @@ the test suite) and fill these in.
 
 \* Required for the indexer to do anything; the app runs fine without them, it just never sees on-chain events.
 \*\* Required for the admin review endpoints to work at all; everything else in the API works without it.
+
+
+| `RESEND_API_KEY` | No | — | Resend API key used to send email notifications. Email notifications remain in log-only stub mode when this is unset. |
+| `NOTIFY_EMAIL_FROM` | No | — | Sender address used by Resend. Required when `RESEND_API_KEY` is configured. |
+| `NOTIFY_EMAIL_TO` | No | — | Recipient address for notification emails. Email notifications are skipped when this is unset. |
