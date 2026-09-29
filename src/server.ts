@@ -3,10 +3,12 @@ import rateLimit from '@fastify/rate-limit';
 import Fastify from 'fastify';
 
 import { prisma } from './db.js';
+import { getCheckpoint } from './indexer/checkpoint.js';
 import { impactRoutes } from './routes/impact.js';
 import { ngoApplicationRoutes } from './routes/ngoApplications.js';
 import { ngoRoutes } from './routes/ngos.js';
 import { streamRoutes } from './routes/streams.js';
+import { getLatestLedgerSequence } from './stellar/rpc.js';
 
 // pino-pretty runs its formatting on a separate worker thread; spawning
 // one per Fastify instance is fine for a single long-running process, but
@@ -67,6 +69,35 @@ export function buildServer() {
   app.get('/health', async () => {
     await prisma.$queryRaw`SELECT 1`;
     return { status: 'ok' };
+  });
+
+  app.get('/health/ready', async (request, reply) => {
+    try {
+      // 1. Check DB
+      await prisma.$queryRaw`SELECT 1`;
+
+      // 2. Get RPC and Indexer info
+      const [latestLedger, checkpointLedger] = await Promise.all([
+        getLatestLedgerSequence(),
+        getCheckpoint(),
+      ]);
+
+      if (checkpointLedger === undefined) {
+        return reply.code(503).send({ status: 'error', reason: 'indexer_not_started' });
+      }
+
+      const lag = latestLedger - checkpointLedger;
+      const threshold = parseInt(process.env.INDEXER_LAG_THRESHOLD ?? '100', 10);
+
+      if (lag > threshold) {
+        return reply.code(503).send({ status: 'error', reason: 'indexer_lagging', lag, threshold });
+      }
+
+      return { status: 'ok', lag, latestLedger, checkpointLedger };
+    } catch (error) {
+      request.log.error(error);
+      return reply.code(503).send({ status: 'error', reason: 'service_unavailable' });
+    }
   });
 
   app.register(ngoRoutes);
