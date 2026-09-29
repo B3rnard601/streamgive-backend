@@ -12,7 +12,9 @@ async function notifyWebhook(event: NotificationEvent): Promise<void> {
     });
 
     if (!res.ok) {
-      console.error(`webhook notification failed with status ${res.status} for ${webhookUrl}`);
+      console.error(
+        `webhook notification failed with status ${res.status} for ${webhookUrl}`,
+      );
     }
   } catch (err) {
     console.error('webhook notification failed', err);

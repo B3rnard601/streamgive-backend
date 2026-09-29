@@ -359,4 +359,36 @@ describe('GET /streams/:id', () => {
 
     await app.close();
   });
+
+  it('returns null name and registered false for a stream to an unregistered NGO', async () => {
+    const app = buildServer();
+
+    const donor = await prisma.donor.create({ data: { address: fakeAddress('A') } });
+    // Placeholder NGO: name is empty, not yet registered on-chain.
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('B'), name: '', verified: false },
+    });
+    const stream = await prisma.stream.create({
+      data: {
+        onChainId: 1n,
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('D'),
+        rate: '1',
+        balance: '100',
+        withdrawn: '0',
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: `/streams/${stream.id}` });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body.ngo.name).toBeNull();
+    expect(body.ngo.registered).toBe(false);
+    // ownerAddress is still present so clients can display the wallet address if they choose.
+    expect(body.ngo.ownerAddress).toBe(ngo.ownerAddress);
+
+    await app.close();
+  });
 });
