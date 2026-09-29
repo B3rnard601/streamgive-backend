@@ -1,0 +1,12 @@
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+export async function getPlatformTotalSum(): Promise<string> {
+  const result = await prisma.$queryRaw<[{ total: string | null }]>`
+    SELECT SUM(balance::numeric + withdrawn::numeric)::text as total
+    FROM "Stream";
+  `;
+
+  return result[0]?.total ?? '0';
+}
