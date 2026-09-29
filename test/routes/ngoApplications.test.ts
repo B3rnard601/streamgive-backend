@@ -68,6 +68,36 @@ describe('POST /ngo-applications', () => {
 
     await app.close();
   });
+
+  it('rejects a new application from an already-approved NGO with 409 already_approved', async () => {
+    const app = buildServer();
+    const payload = validApplicationPayload();
+
+    await prisma.ngoApplication.create({
+      data: { ...payload, status: 'APPROVED' },
+    });
+
+    const response = await app.inject({ method: 'POST', url: '/ngo-applications', payload });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toBe('already_approved');
+
+    await app.close();
+  });
+
+  it('allows a rejected applicant to submit a new application', async () => {
+    const app = buildServer();
+    const payload = validApplicationPayload();
+
+    await prisma.ngoApplication.create({
+      data: { ...payload, status: 'REJECTED' },
+    });
+
+    const response = await app.inject({ method: 'POST', url: '/ngo-applications', payload });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().status).toBe('PENDING');
+
+    await app.close();
+  });
 });
 
 describe('GET /ngo-applications/status', () => {
@@ -196,6 +226,62 @@ describe('admin NGO application review', () => {
 
     const response = await app.inject({ method: 'POST', url: realUrl, headers, payload: {} });
     expect(response.statusCode).toBe(401);
+
+    await app.close();
+  });
+
+  it('rejects approving an already rejected application with 409 already_reviewed', async () => {
+    const app = buildServer();
+
+    const application = await prisma.ngoApplication.create({
+      data: validApplicationPayload({ status: 'REJECTED' }),
+    });
+    const url = `/ngo-applications/${application.id}/approve`;
+    const headers = signAdminRequest(adminKeypair, 'POST', url);
+
+    const response = await app.inject({ method: 'POST', url, headers, payload: {} });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toBe('already_reviewed');
+
+    await app.close();
+  });
+
+  it('rejects rejecting an already approved application with 409 already_reviewed', async () => {
+    const app = buildServer();
+
+    const application = await prisma.ngoApplication.create({
+      data: validApplicationPayload({ status: 'APPROVED' }),
+    });
+    const url = `/ngo-applications/${application.id}/reject`;
+    const headers = signAdminRequest(adminKeypair, 'POST', url);
+
+    const response = await app.inject({ method: 'POST', url, headers, payload: {} });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toBe('already_reviewed');
+
+    await app.close();
+  });
+
+  it('returns 400 invalid_request when approving with a malformed id', async () => {
+    const app = buildServer();
+    const url = '/ngo-applications/not-a-uuid/approve';
+    const headers = signAdminRequest(adminKeypair, 'POST', url);
+
+    const response = await app.inject({ method: 'POST', url, headers, payload: {} });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe('invalid_request');
+
+    await app.close();
+  });
+
+  it('returns 400 invalid_request when rejecting with a malformed id', async () => {
+    const app = buildServer();
+    const url = '/ngo-applications/not-a-uuid/reject';
+    const headers = signAdminRequest(adminKeypair, 'POST', url);
+
+    const response = await app.inject({ method: 'POST', url, headers, payload: {} });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe('invalid_request');
 
     await app.close();
   });
