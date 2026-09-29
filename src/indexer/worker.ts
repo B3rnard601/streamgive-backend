@@ -165,3 +165,17 @@ export class EventWorker {
     });
   }
 }
+
+// Inside event processing / transaction logic
+await tx.indexerCheckpoint.upsert({
+  where: { id: 'singleton' },
+  update: {
+    lastLedger: event.ledger,
+    lastEventId: event.id, // Save event ID for intra-ledger resumption
+  },
+  create: {
+    id: 'singleton',
+    lastLedger: event.ledger,
+    lastEventId: event.id,
+  },
+});
