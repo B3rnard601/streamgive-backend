@@ -302,6 +302,68 @@ describe('GET /streams', () => {
 
     await app.close();
   });
+
+  it('includes createdTxHash in list response (non-null when set)', async () => {
+    const app = buildServer();
+
+    const donor = await prisma.donor.create({ data: { address: fakeAddress('A') } });
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('B'), name: 'NGO', verified: true },
+    });
+    const txHash = 'c4515e3bdc0897f21cc5dbec8c82cf0a936d4741cb74a8e158eb51b9fb00411a';
+
+    await prisma.stream.create({
+      data: {
+        onChainId: 1n,
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('D'),
+        rate: '1',
+        balance: '100',
+        withdrawn: '0',
+        createdTxHash: txHash,
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/streams' });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body.streams).toHaveLength(1);
+    expect(body.streams[0].createdTxHash).toBe(txHash);
+
+    await app.close();
+  });
+
+  it('includes createdTxHash as null in list response when not set', async () => {
+    const app = buildServer();
+
+    const donor = await prisma.donor.create({ data: { address: fakeAddress('A') } });
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('B'), name: 'NGO', verified: true },
+    });
+
+    await prisma.stream.create({
+      data: {
+        onChainId: 1n,
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('D'),
+        rate: '1',
+        balance: '100',
+        withdrawn: '0',
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/streams' });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body.streams).toHaveLength(1);
+    expect(body.streams[0].createdTxHash).toBeNull();
+
+    await app.close();
+  });
 });
 
 describe('GET /streams/:id', () => {
@@ -335,6 +397,64 @@ describe('GET /streams/:id', () => {
     expect(body.id).toBe(stream.id);
     expect(body.onChainId).toBe('1');
     expect(typeof body.onChainId).toBe('string');
+
+    await app.close();
+  });
+
+  it('includes createdTxHash in single stream response', async () => {
+    const app = buildServer();
+
+    const donor = await prisma.donor.create({ data: { address: fakeAddress('A') } });
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('B'), name: 'NGO', verified: true },
+    });
+    const txHash = 'c4515e3bdc0897f21cc5dbec8c82cf0a936d4741cb74a8e158eb51b9fb00411a';
+    const stream = await prisma.stream.create({
+      data: {
+        onChainId: 1n,
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('D'),
+        rate: '1',
+        balance: '100',
+        withdrawn: '0',
+        createdTxHash: txHash,
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: `/streams/${stream.id}` });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body.createdTxHash).toBe(txHash);
+
+    await app.close();
+  });
+
+  it('returns null createdTxHash for legacy streams without one', async () => {
+    const app = buildServer();
+
+    const donor = await prisma.donor.create({ data: { address: fakeAddress('A') } });
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('B'), name: 'NGO', verified: true },
+    });
+    const stream = await prisma.stream.create({
+      data: {
+        onChainId: 1n,
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('D'),
+        rate: '1',
+        balance: '100',
+        withdrawn: '0',
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: `/streams/${stream.id}` });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body.createdTxHash).toBeNull();
 
     await app.close();
   });

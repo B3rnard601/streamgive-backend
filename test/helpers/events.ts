@@ -32,13 +32,14 @@ export function addressScVal(address: string): xdr.ScVal {
 export function makeEvent(
   topic: xdr.ScVal[],
   value: xdr.ScVal,
-  options?: { ledgerClosedAt?: string },
+  options?: { ledgerClosedAt?: string; txHash?: string },
 ): ContractEvent {
   return {
     id: '0000000001-0000000000',
     type: 'contract',
     ledger: 100,
     ledgerClosedAt: options?.ledgerClosedAt ?? new Date().toISOString(),
+    txHash: options?.txHash ?? 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     contractId: 'CTESTCONTRACTID',
     topic,
     value,

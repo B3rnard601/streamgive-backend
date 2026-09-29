@@ -63,6 +63,7 @@ async function handleStreamCreated(event: ContractEvent): Promise<void> {
       withdrawn: '0',
       status: 'ACTIVE',
       createdAt: new Date(event.ledgerClosedAt),
+      createdTxHash: event.txHash ?? null,
     },
     update: {},
   });
