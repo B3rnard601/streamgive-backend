@@ -1,14 +1,33 @@
-import request from 'supertest';
-// Import your app instance here
+import { afterEach, describe, expect, it } from 'vitest';
+import { buildServer } from '../src/server.js';
+import { prisma } from '../src/db.js';
+import { resetDb } from './helpers/db.js';
 
 describe('GET /impact/:ngoId (#57)', () => {
+  afterEach(async () => {
+    await resetDb();
+  });
+
   it('correctly calculates platformSharePercent across multiple NGOs using SQL aggregation', async () => {
-    // Seed test streams for NGO A and NGO B with known balances and withdrawals
-    
-    const response = await request(app).get('/impact/ngo_test_1');
-    
-    expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty('platformSharePercent');
-    // Assert expected percentage calculation against the SQL-aggregated platform total
+    await resetDb();
+    const app = buildServer();
+
+    const ngo = await prisma.ngo.create({
+      data: {
+        ownerAddress: 'GA4Z4GPSO3FKPMQJ3WCMU5D5WE25SDXZS47YDF3J3NWF65ILGCVJVWIJ',
+        name: 'NGO Test',
+        verified: true,
+      },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/impact/${ngo.id}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toHaveProperty('platformSharePercent');
+
+    await app.close();
   });
 });

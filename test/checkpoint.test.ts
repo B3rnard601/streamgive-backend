@@ -1,4 +1,4 @@
-// src/__tests__/checkpoint.test.ts
+import { describe, expect, it } from 'vitest';
 
 describe('Intra-Ledger Checkpoint & Resumption (#39)', () => {
   it('processes subsequent events in the same ledger after a mid-ledger crash', async () => {
@@ -22,11 +22,9 @@ describe('Intra-Ledger Checkpoint & Resumption (#39)', () => {
       });
 
       for (const event of pendingEvents) {
+        processedEvents.push(event.id);
+        checkpoint = { lastLedger: event.ledger, lastEventId: event.id };
         if (event.id === 'evt_1') {
-          // Process first event successfully
-          processedEvents.push(event.id);
-          // Update checkpoint
-          checkpoint = { lastLedger: event.ledger, lastEventId: event.id };
           // Simulate crash/throw right after first event checkpoint save
           break;
         }

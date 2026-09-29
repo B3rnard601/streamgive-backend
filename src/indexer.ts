@@ -42,7 +42,11 @@ export function startIndexer(pollOnce: () => Promise<void>, intervalMs: number) 
   };
 }
 
-export async function pollOnce(rpcClient: any, processEvent: (event: any) => Promise<void>) {
+async function getStoredCursor(): Promise<string | undefined> {
+  return undefined;
+}
+
+export async function pollOnce(rpcClient: { getEvents: (args: { cursor?: string; limit: number }) => Promise<{ events?: { id: string }[]; nextCursor?: string }> }, processEvent: (event: { id: string }) => Promise<void>) {
   let currentCursor = await getStoredCursor();
   const PAGE_LIMIT = 100; // Adjust according to your RPC client configuration
   let hasMore = true;

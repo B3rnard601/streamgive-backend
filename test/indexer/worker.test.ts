@@ -51,8 +51,8 @@ async function freshWorker() {
 function runWorkerBriefly(startIndexer: (h: () => Promise<void>) => () => void): Promise<void> {
   return new Promise<void>((resolve) => {
     const stop = startIndexer(async () => {});
-    // 200ms gives ~4 poll ticks at 50ms interval before we stop.
-    setTimeout(() => { stop(); resolve(); }, 200);
+    // 70ms gives 1 bootstrap tick at 50ms interval before we stop.
+    setTimeout(() => { stop(); resolve(); }, 70);
   });
 }
 

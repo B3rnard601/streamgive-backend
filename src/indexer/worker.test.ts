@@ -1,5 +1,7 @@
 // src/__tests__/worker.test.ts
 
+import { describe } from "zod";
+
 describe('Atomic Event Processing & Checkpointing (#40)', () => {
   it('prevents double-counting when replaying the same withdraw event twice', async () => {
     // Setup mock prisma transaction client and initial balance
@@ -27,7 +29,7 @@ describe('Atomic Event Processing & Checkpointing (#40)', () => {
     };
 
     // Simulate event processing function
-    const processEvent = async (event: any) => {
+    const processEvent = async (event: { id: string; amount: number }) => {
       await mockPrisma.$transaction(async (tx) => {
         // Apply withdraw
         await tx.userBalance.update({ decrement: { balance: event.amount } });
