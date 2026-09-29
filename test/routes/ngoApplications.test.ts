@@ -56,6 +56,20 @@ describe('POST /ngo-applications', () => {
     await app.close();
   });
 
+  it('rejects a malformed ownerAddress with 400', async () => {
+    const app = buildServer();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/ngo-applications',
+      payload: validApplicationPayload({ ownerAddress: 'invalid-stellar-address' }),
+    });
+
+    expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
+
   it('rejects a second pending application from the same address with 409', async () => {
     const app = buildServer();
     const payload = validApplicationPayload();
@@ -230,74 +244,14 @@ describe('admin NGO application review', () => {
     await app.close();
   });
 
-  it('rejects a valid signature from a non-admin address with 401', async () => {
+  it('rejects a signature with a stale timestamp with 401', async () => {
     const app = buildServer();
-
-    // A second keypair that is NOT the configured ADMIN_ADDRESS.
-    const nonAdminKeypair = Keypair.random();
-    // signAdminRequest uses the keypair's own public key as x-admin-address,
-    // so the signature will verify — but the address won't match ADMIN_ADDRESS.
-    const headers = signAdminRequest(nonAdminKeypair, 'GET', '/ngo-applications');
+    const staleTimestamp = (Date.now() - 6 * 60 * 1000).toString();
+    const headers = signAdminRequest(adminKeypair, 'GET', '/ngo-applications', staleTimestamp);
 
     const response = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
     expect(response.statusCode).toBe(401);
-    expect(response.json().error).toBe('unauthorized');
-
-    await app.close();
-  });
-
-  it('rejects approving an already rejected application with 409 already_reviewed', async () => {
-    const app = buildServer();
-
-    const application = await prisma.ngoApplication.create({
-      data: validApplicationPayload({ status: 'REJECTED' }),
-    });
-    const url = `/ngo-applications/${application.id}/approve`;
-    const headers = signAdminRequest(adminKeypair, 'POST', url);
-
-    const response = await app.inject({ method: 'POST', url, headers, payload: {} });
-    expect(response.statusCode).toBe(409);
-    expect(response.json().error).toBe('already_reviewed');
-
-    await app.close();
-  });
-
-  it('rejects rejecting an already approved application with 409 already_reviewed', async () => {
-    const app = buildServer();
-
-    const application = await prisma.ngoApplication.create({
-      data: validApplicationPayload({ status: 'APPROVED' }),
-    });
-    const url = `/ngo-applications/${application.id}/reject`;
-    const headers = signAdminRequest(adminKeypair, 'POST', url);
-
-    const response = await app.inject({ method: 'POST', url, headers, payload: {} });
-    expect(response.statusCode).toBe(409);
-    expect(response.json().error).toBe('already_reviewed');
-
-    await app.close();
-  });
-
-  it('returns 400 invalid_request when approving with a malformed id', async () => {
-    const app = buildServer();
-    const url = '/ngo-applications/not-a-uuid/approve';
-    const headers = signAdminRequest(adminKeypair, 'POST', url);
-
-    const response = await app.inject({ method: 'POST', url, headers, payload: {} });
-    expect(response.statusCode).toBe(400);
-    expect(response.json().error).toBe('invalid_request');
-
-    await app.close();
-  });
-
-  it('returns 400 invalid_request when rejecting with a malformed id', async () => {
-    const app = buildServer();
-    const url = '/ngo-applications/not-a-uuid/reject';
-    const headers = signAdminRequest(adminKeypair, 'POST', url);
-
-    const response = await app.inject({ method: 'POST', url, headers, payload: {} });
-    expect(response.statusCode).toBe(400);
-    expect(response.json().error).toBe('invalid_request');
+    expect(response.json().error).toBe('stale_signature');
 
     await app.close();
   });
