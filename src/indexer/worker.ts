@@ -1,4 +1,3 @@
-
 import { getLatestLedgerSequence, rpcServer } from '../stellar/rpc.js';
 import { getCheckpoint, saveCheckpoint } from './checkpoint.js';
 import { WATCHED_CONTRACT_IDS } from './contracts.js';
