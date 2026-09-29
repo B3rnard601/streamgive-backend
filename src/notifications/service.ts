@@ -12,6 +12,12 @@ async function notifyWebhook(event: NotificationEvent): Promise<void> {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(event),
     });
+
+    if (!res.ok) {
+      console.error(
+        `webhook notification failed with status ${res.status} for ${webhookUrl}`,
+      );
+    }
   } catch (err) {
     console.error('webhook notification failed', err);
   }
