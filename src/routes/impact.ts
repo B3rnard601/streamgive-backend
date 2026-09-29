@@ -20,8 +20,14 @@ export async function impactRoutes(app: FastifyInstance): Promise<void> {
       prisma.ngo.count({ where: { verified: true } }),
     ]);
 
+    // For cancelled streams the balance was refunded to the donor and never
+    // delivered to any NGO, so only count withdrawn.  Active streams count
+    // balance + withdrawn (balance will be withdrawn in the future).
     const totalCommitted = streams.reduce(
-      (sum, s) => sum + BigInt(s.balance) + BigInt(s.withdrawn),
+      (sum, s) =>
+        s.status === 'CANCELLED'
+          ? sum + BigInt(s.withdrawn)
+          : sum + BigInt(s.balance) + BigInt(s.withdrawn),
       0n,
     );
     const totalWithdrawn = streams.reduce((sum, s) => sum + BigInt(s.withdrawn), 0n);
@@ -53,8 +59,13 @@ export async function impactRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(404).send({ error: 'not_found' });
     }
 
+    // For cancelled streams the balance was refunded to the donor, so only
+    // count withdrawn.  Active streams count balance + withdrawn.
     const ngoCommitted = ngo.streams.reduce(
-      (sum, s) => sum + BigInt(s.balance) + BigInt(s.withdrawn),
+      (sum, s) =>
+        s.status === 'CANCELLED'
+          ? sum + BigInt(s.withdrawn)
+          : sum + BigInt(s.balance) + BigInt(s.withdrawn),
       0n,
     );
     const ngoWithdrawn = ngo.streams.reduce((sum, s) => sum + BigInt(s.withdrawn), 0n);
@@ -63,10 +74,13 @@ export async function impactRoutes(app: FastifyInstance): Promise<void> {
     // the first thing to replace with a maintained running total if the
     // streams table grows large.
     const allStreams = await prisma.stream.findMany({
-      select: { balance: true, withdrawn: true },
+      select: { balance: true, withdrawn: true, status: true },
     });
     const platformCommitted = allStreams.reduce(
-      (sum, s) => sum + BigInt(s.balance) + BigInt(s.withdrawn),
+      (sum, s) =>
+        s.status === 'CANCELLED'
+          ? sum + BigInt(s.withdrawn)
+          : sum + BigInt(s.balance) + BigInt(s.withdrawn),
       0n,
     );
 

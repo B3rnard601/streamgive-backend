@@ -29,12 +29,16 @@ export function addressScVal(address: string): xdr.ScVal {
  * so these tests catch actual encode/decode mismatches rather than just
  * confirming a mock behaves the way we assumed it would.
  */
-export function makeEvent(topic: xdr.ScVal[], value: xdr.ScVal): ContractEvent {
+export function makeEvent(
+  topic: xdr.ScVal[],
+  value: xdr.ScVal,
+  options?: { ledgerClosedAt?: string },
+): ContractEvent {
   return {
     id: '0000000001-0000000000',
     type: 'contract',
     ledger: 100,
-    ledgerClosedAt: new Date().toISOString(),
+    ledgerClosedAt: options?.ledgerClosedAt ?? new Date().toISOString(),
     contractId: 'CTESTCONTRACTID',
     topic,
     value,

@@ -20,7 +20,7 @@ async function ensureNgo(ownerAddress: string) {
     // on-chain. Placeholder name until (if) a "register" event arrives;
     // `update: {}` below makes sure we never clobber a real name/verified
     // status that's already on file.
-    create: { ownerAddress, name: ownerAddress, verified: false },
+    create: { ownerAddress, name: '', verified: false },
     update: {},
   });
 }
@@ -62,6 +62,7 @@ async function handleStreamCreated(event: ContractEvent): Promise<void> {
       balance: depositVal.toString(),
       withdrawn: '0',
       status: 'ACTIVE',
+      createdAt: new Date(event.ledgerClosedAt),
     },
     update: {},
   });
