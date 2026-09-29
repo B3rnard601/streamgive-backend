@@ -1,14 +1,13 @@
 import type { NotificationEvent } from './types.js';
 
-const WEBHOOK_URL = process.env.NOTIFY_WEBHOOK_URL;
-
 /** Real (if NOTIFY_WEBHOOK_URL is set): POSTs the event as JSON. Node's
  * built-in fetch means this needs no extra dependency. */
 async function notifyWebhook(event: NotificationEvent): Promise<void> {
-  if (!WEBHOOK_URL) return;
+  const webhookUrl = process.env.NOTIFY_WEBHOOK_URL;
+  if (!webhookUrl) return;
 
   try {
-    await fetch(WEBHOOK_URL, {
+    await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(event),
