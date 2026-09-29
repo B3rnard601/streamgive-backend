@@ -230,6 +230,22 @@ describe('admin NGO application review', () => {
     await app.close();
   });
 
+  it('rejects a valid signature from a non-admin address with 401', async () => {
+    const app = buildServer();
+
+    // A second keypair that is NOT the configured ADMIN_ADDRESS.
+    const nonAdminKeypair = Keypair.random();
+    // signAdminRequest uses the keypair's own public key as x-admin-address,
+    // so the signature will verify — but the address won't match ADMIN_ADDRESS.
+    const headers = signAdminRequest(nonAdminKeypair, 'GET', '/ngo-applications');
+
+    const response = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
+    expect(response.statusCode).toBe(401);
+    expect(response.json().error).toBe('unauthorized');
+
+    await app.close();
+  });
+
   it('rejects approving an already rejected application with 409 already_reviewed', async () => {
     const app = buildServer();
 
