@@ -3,6 +3,9 @@ import { getCheckpoint, saveCheckpoint } from './checkpoint.js';
 import { WATCHED_CONTRACT_IDS } from './contracts.js';
 
 const POLL_INTERVAL_MS = Number(process.env.INDEXER_POLL_INTERVAL_MS ?? 5000);
+const START_LEDGER = process.env.INDEXER_START_LEDGER
+  ? Number(process.env.INDEXER_START_LEDGER)
+  : undefined;
 
 type GetEventsResult = Awaited<ReturnType<typeof rpcServer.getEvents>>;
 export type ContractEvent = GetEventsResult['events'][number];
@@ -39,9 +42,9 @@ async function pollOnce(handleEvent: EventHandler): Promise<void> {
     if (saved !== undefined) {
       lastProcessedLedger = saved;
     } else {
-      // Never run before: start from "now" rather than backfilling the
-      // contract's entire history.
-      lastProcessedLedger = await getLatestLedgerSequence();
+      // Never run before: use INDEXER_START_LEDGER for backfill if set,
+      // otherwise start from "now" to avoid replaying all history.
+      lastProcessedLedger = START_LEDGER ?? (await getLatestLedgerSequence());
       await saveCheckpoint(lastProcessedLedger);
       return;
     }
