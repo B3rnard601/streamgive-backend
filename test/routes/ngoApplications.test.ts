@@ -199,4 +199,35 @@ describe('admin NGO application review', () => {
 
     await app.close();
   });
+
+  it('returns 404 when approving or rejecting a non-existent application id', async () => {
+    const app = buildServer();
+
+    const nonExistentId = '00000000-0000-0000-0000-000000000000';
+    const approveUrl = `/ngo-applications/${nonExistentId}/approve`;
+    const approveHeaders = signAdminRequest(adminKeypair, 'POST', approveUrl);
+
+    const approveResponse = await app.inject({
+      method: 'POST',
+      url: approveUrl,
+      headers: approveHeaders,
+      payload: {},
+    });
+    expect(approveResponse.statusCode).toBe(404);
+    expect(approveResponse.json().error).toBe('not_found');
+
+    const rejectUrl = `/ngo-applications/${nonExistentId}/reject`;
+    const rejectHeaders = signAdminRequest(adminKeypair, 'POST', rejectUrl);
+
+    const rejectResponse = await app.inject({
+      method: 'POST',
+      url: rejectUrl,
+      headers: rejectHeaders,
+      payload: {},
+    });
+    expect(rejectResponse.statusCode).toBe(404);
+    expect(rejectResponse.json().error).toBe('not_found');
+
+    await app.close();
+  });
 });
