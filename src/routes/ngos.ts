@@ -45,12 +45,17 @@ async function findNgoDetail(where: { id: string } | { ownerAddress: string }) {
 
   const { streams, ...profile } = ngo;
 
-  // `balance + withdrawn` per stream is what's actually been committed to
-  // this NGO (deposits plus top-ups, net of anything refunded back to a
-  // donor on cancel) — not the same as the original deposit once top-ups
-  // or cancellations have happened.
+  // For an active stream, balance + withdrawn equals the total deposited and
+  // committed to this NGO (balance will eventually be withdrawn; withdrawn
+  // already has been).  For a cancelled stream the contract zeroes balance
+  // and refunds it to the donor, so only the already-withdrawn portion was
+  // ever delivered to the NGO.  Counting balance on a cancelled stream would
+  // overstate totalCommitted by the refunded amount.
   const totalCommitted = streams.reduce(
-    (sum, s) => sum + BigInt(s.balance) + BigInt(s.withdrawn),
+    (sum, s) =>
+      s.status === 'CANCELLED'
+        ? sum + BigInt(s.withdrawn)
+        : sum + BigInt(s.balance) + BigInt(s.withdrawn),
     0n,
   );
   const totalWithdrawn = streams.reduce((sum, s) => sum + BigInt(s.withdrawn), 0n);

@@ -78,6 +78,55 @@ describe('GET /impact', () => {
 
     await app.close();
   });
+
+  it('excludes refunded balance from totalCommitted when a stream is cancelled', async () => {
+    const app = buildServer();
+
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('E'), name: 'Refund NGO', verified: true },
+    });
+    const donor = await prisma.donor.create({ data: { address: fakeAddress('F') } });
+
+    // Active stream: balance=500, withdrawn=500 → committed = 1000
+    await prisma.stream.create({
+      data: {
+        onChainId: 10n,
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('T'),
+        rate: '10',
+        balance: '500',
+        withdrawn: '500',
+        status: 'ACTIVE',
+      },
+    });
+
+    // Cancelled stream: 400 was withdrawn to NGO; remaining balance was
+    // refunded to donor and zeroed on-chain.  Only 400 must count.
+    await prisma.stream.create({
+      data: {
+        onChainId: 11n,
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('T'),
+        rate: '0',
+        balance: '0',
+        withdrawn: '400',
+        status: 'CANCELLED',
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/impact' });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    // active 1000 + cancelled 400 = 1400
+    expect(body.totalCommitted).toBe('1400');
+    expect(body.totalWithdrawn).toBe('900');
+    expect(body.activeStreams).toBe(1);
+
+    await app.close();
+  });
 });
 
 describe('GET /impact/:ngoId', () => {
@@ -236,6 +285,58 @@ describe('GET /impact/:ngoId', () => {
 
     const body = response.json();
     expect(body.uniqueDonors).toBe(1);
+
+    await app.close();
+  });
+
+  it('excludes refunded balance from totalCommitted for a cancelled stream', async () => {
+    const app = buildServer();
+
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('H'), name: 'Refund NGO', verified: true },
+    });
+    const donor1 = await prisma.donor.create({ data: { address: fakeAddress('I') } });
+    const donor2 = await prisma.donor.create({ data: { address: fakeAddress('J') } });
+
+    // Active stream: balance=600, withdrawn=400 → committed = 1000
+    await prisma.stream.create({
+      data: {
+        onChainId: 6n,
+        donorId: donor1.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('T'),
+        rate: '10',
+        balance: '600',
+        withdrawn: '400',
+        status: 'ACTIVE',
+      },
+    });
+
+    // Cancelled stream: donor deposited 800, 300 was withdrawn to NGO, 500
+    // was refunded to donor (reflected as balance=0 after contract settles).
+    // totalCommitted must count only the withdrawn 300, not 300+500=800.
+    await prisma.stream.create({
+      data: {
+        onChainId: 7n,
+        donorId: donor2.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('T'),
+        rate: '0',
+        balance: '0',
+        withdrawn: '300',
+        status: 'CANCELLED',
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: `/impact/${ngo.id}` });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    // active 1000 + cancelled 300 = 1300 (not 1300 + 500 refunded = 1800)
+    expect(body.totalCommitted).toBe('1300');
+    expect(body.totalWithdrawn).toBe('700');
+    expect(body.activeStreams).toBe(1);
+    expect(body.cancelledStreams).toBe(1);
 
     await app.close();
   });

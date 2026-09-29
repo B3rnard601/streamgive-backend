@@ -238,87 +238,139 @@ describe('GET /ngos/:id', () => {
     await app.close();
   });
 
-  it(‘computes stats from the NGO’s streams’, async () => {
+  it("computes stats from the NGO's streams", async () => {
     const app = buildServer();
 
     const ngo = await prisma.ngo.create({
-      data: { ownerAddress: fakeAddress(‘C’), name: ‘Impact NGO’, verified: true },
+      data: { ownerAddress: fakeAddress('C'), name: 'Impact NGO', verified: true },
     });
-    const donor = await prisma.donor.create({ data: { address: fakeAddress(‘D’) } });
+    const donor = await prisma.donor.create({ data: { address: fakeAddress('D') } });
 
     await prisma.stream.create({
       data: {
         onChainId: 1n,
         donorId: donor.id,
         ngoId: ngo.id,
-        tokenAddress: fakeAddress(‘E’),
-        rate: ‘10’,
-        balance: ‘400’,
-        withdrawn: ‘600’,
-        status: ‘ACTIVE’,
+        tokenAddress: fakeAddress('E'),
+        rate: '10',
+        balance: '400',
+        withdrawn: '600',
+        status: 'ACTIVE',
       },
     });
 
-    const response = await app.inject({ method: ‘GET’, url: `/ngos/${ngo.id}` });
+    const response = await app.inject({ method: 'GET', url: `/ngos/${ngo.id}` });
     expect(response.statusCode).toBe(200);
 
     const body = response.json();
-    expect(body.stats.totalCommitted).toBe(‘1000’);
-    expect(body.stats.totalWithdrawn).toBe(‘600’);
+    expect(body.stats.totalCommitted).toBe('1000');
+    expect(body.stats.totalWithdrawn).toBe('600');
     expect(body.stats.activeStreamCount).toBe(1);
     expect(body.stats.donorCount).toBe(1);
 
     await app.close();
   });
 
-  it(‘includes description, website and country from the approved application’, async () => {
+  it('excludes refunded balance from totalCommitted when a stream is cancelled', async () => {
     const app = buildServer();
 
     const ngo = await prisma.ngo.create({
-      data: { ownerAddress: fakeAddress(‘F’), name: ‘Green NGO’, verified: true },
+      data: { ownerAddress: fakeAddress('H'), name: 'Mixed NGO', verified: true },
+    });
+    const donor1 = await prisma.donor.create({ data: { address: fakeAddress('I') } });
+    const donor2 = await prisma.donor.create({ data: { address: fakeAddress('J') } });
+
+    // Active stream: balance=600, withdrawn=400 → committed = 600+400 = 1000
+    await prisma.stream.create({
+      data: {
+        onChainId: 10n,
+        donorId: donor1.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('T'),
+        rate: '10',
+        balance: '600',
+        withdrawn: '400',
+        status: 'ACTIVE',
+      },
+    });
+
+    // Cancelled stream: contract zeroed balance and refunded it to the donor.
+    // Only the already-withdrawn portion (300) was ever delivered to the NGO.
+    // The 500 that was refunded must NOT be counted in totalCommitted.
+    await prisma.stream.create({
+      data: {
+        onChainId: 11n,
+        donorId: donor2.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('T'),
+        rate: '0',
+        balance: '0',
+        withdrawn: '300',
+        status: 'CANCELLED',
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: `/ngos/${ngo.id}` });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    // active contributes 1000; cancelled contributes 300 (not 300+500=800)
+    expect(body.stats.totalCommitted).toBe('1300');
+    expect(body.stats.totalWithdrawn).toBe('700');
+    expect(body.stats.activeStreamCount).toBe(1);
+    expect(body.stats.donorCount).toBe(2);
+
+    await app.close();
+  });
+
+  it('includes description, website and country from the approved application', async () => {
+    const app = buildServer();
+
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('F'), name: 'Green NGO', verified: true },
     });
     await prisma.ngoApplication.create({
       data: {
         ownerAddress: ngo.ownerAddress,
         name: ngo.name,
-        description: ‘Saving trees everywhere.’,
-        website: ‘https://green.example’,
-        contactEmail: ‘secret@green.example’,
-        country: ‘Brazil’,
-        status: ‘APPROVED’,
+        description: 'Saving trees everywhere.',
+        website: 'https://green.example',
+        contactEmail: 'secret@green.example',
+        country: 'Brazil',
+        status: 'APPROVED',
       },
     });
 
-    const response = await app.inject({ method: ‘GET’, url: `/ngos/${ngo.id}` });
+    const response = await app.inject({ method: 'GET', url: `/ngos/${ngo.id}` });
     expect(response.statusCode).toBe(200);
 
     const body = response.json();
-    expect(body.description).toBe(‘Saving trees everywhere.’);
-    expect(body.website).toBe(‘https://green.example’);
-    expect(body.country).toBe(‘Brazil’);
+    expect(body.description).toBe('Saving trees everywhere.');
+    expect(body.website).toBe('https://green.example');
+    expect(body.country).toBe('Brazil');
     expect(body.contactEmail).toBeUndefined();
     expect(body.reviewNote).toBeUndefined();
 
     await app.close();
   });
 
-  it(‘returns null description/website/country when there is no approved application’, async () => {
+  it('returns null description/website/country when there is no approved application', async () => {
     const app = buildServer();
 
     const ngo = await prisma.ngo.create({
-      data: { ownerAddress: fakeAddress(‘G’), name: ‘Pending NGO’, verified: false },
+      data: { ownerAddress: fakeAddress('G'), name: 'Pending NGO', verified: false },
     });
     await prisma.ngoApplication.create({
       data: {
         ownerAddress: ngo.ownerAddress,
         name: ngo.name,
-        description: ‘Still under review.’,
-        contactEmail: ‘hi@pending.example’,
-        status: ‘PENDING’,
+        description: 'Still under review.',
+        contactEmail: 'hi@pending.example',
+        status: 'PENDING',
       },
     });
 
-    const response = await app.inject({ method: ‘GET’, url: `/ngos/${ngo.id}` });
+    const response = await app.inject({ method: 'GET', url: `/ngos/${ngo.id}` });
     expect(response.statusCode).toBe(200);
 
     const body = response.json();
