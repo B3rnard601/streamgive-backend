@@ -4,7 +4,6 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../src/db.js';
 import { buildServer } from '../../src/server.js';
 import { fakeAddress, resetDb } from '../helpers/db.js';
-import { sep53Hash } from '../../src/middleware/adminAuth.js';
 import { signAdminRequest } from '../helpers/adminAuth.js';
 
 const adminKeypair = Keypair.random();
@@ -227,6 +226,48 @@ describe('admin NGO application review', () => {
 
     const stored = await prisma.ngoApplication.findUnique({ where: { id: application.id } });
     expect(stored?.status).toBe('APPROVED');
+
+    await app.close();
+  });
+
+  it('rejects a non-object (array) body on approve with 400 invalid_request', async () => {
+    const app = buildServer();
+
+    const application = await prisma.ngoApplication.create({ data: validApplicationPayload() });
+    const url = `/ngo-applications/${application.id}/approve`;
+    const headers = signAdminRequest(adminKeypair, 'POST', url);
+
+    const response = await app.inject({ method: 'POST', url, headers, payload: [] as never });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe('invalid_request');
+
+    // The invalid request must not have touched the application.
+    const stored = await prisma.ngoApplication.findUnique({ where: { id: application.id } });
+    expect(stored?.status).toBe('PENDING');
+
+    await app.close();
+  });
+
+  it('rejects a non-object (array) body on reject with 400 invalid_request', async () => {
+    const app = buildServer();
+
+    const application = await prisma.ngoApplication.create({ data: validApplicationPayload() });
+    const url = `/ngo-applications/${application.id}/reject`;
+    const headers = signAdminRequest(adminKeypair, 'POST', url);
+
+    const response = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: ['not', 'an', 'object'] as never,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe('invalid_request');
+
+    const stored = await prisma.ngoApplication.findUnique({ where: { id: application.id } });
+    expect(stored?.status).toBe('PENDING');
 
     await app.close();
   });
