@@ -147,7 +147,7 @@ export function startIndexer(handleEvent: EventHandler): () => Promise<void> {
   runPoll();
   const interval = setInterval(runPoll, POLL_INTERVAL_MS);
 
-  return async () => {
+  return async (): Promise<void> => {
     clearInterval(interval);
     await Promise.all(inFlightPolls);
   };
