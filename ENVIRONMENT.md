@@ -19,3 +19,8 @@ the test suite) and fill these in.
 
 \* Required for the indexer to do anything; the app runs fine without them, it just never sees on-chain events.
 \*\* Required for the admin review endpoints to work at all; everything else in the API works without it.
+
+
+| `RESEND_API_KEY` | No | — | Resend API key used to send email notifications. Email notifications remain in log-only stub mode when this is unset. |
+| `NOTIFY_EMAIL_FROM` | No | — | Sender address used by Resend. Required when `RESEND_API_KEY` is configured. |
+| `NOTIFY_EMAIL_TO` | No | — | Recipient address for notification emails. Email notifications are skipped when this is unset. |
