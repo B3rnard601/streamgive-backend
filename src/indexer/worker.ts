@@ -14,15 +14,17 @@ export type EventHandler = (event: ContractEvent) => Promise<void>;
 let lastProcessedLedger: number | undefined;
 
 /** The RPC rejects an out-of-window startLedger with JSON-RPC -32600 and a
-  * message naming the range it does serve. There is no dedicated error code
-  * for it, so the message is the only signal available. */
+ *  message naming the range it does serve. There is no dedicated error code
+ *  for it, so the message is the only signal available. */
 function isLedgerOutOfRange(err: unknown): boolean {
   return (
     typeof err === 'object' &&
     err !== null &&
     'message' in err &&
     typeof (err as { message: unknown }).message === 'string' &&
-    (err as { message: string }).message.includes('startLedger must be within the ledger range')
+    (err as { message: string }).message.includes(
+      'startLedger must be within the ledger range',
+    )
   );
 }
 
@@ -33,6 +35,7 @@ async function pollOnce(handleEvent: EventHandler): Promise<void> {
 
   if (lastProcessedLedger === undefined) {
     const saved = await getCheckpoint();
+
     if (saved !== undefined) {
       lastProcessedLedger = saved;
     } else {
@@ -54,11 +57,13 @@ async function pollOnce(handleEvent: EventHandler): Promise<void> {
   //     Skip ahead to the current ledger; the alternative is an indexer that
   //     never recovers. Events in the gap are lost, so say so loudly.
   const latestLedger = await getLatestLedgerSequence();
+
   if (lastProcessedLedger >= latestLedger) {
     return;
   }
 
   let events;
+
   try {
     ({ events } = await rpcServer.getEvents({
       startLedger: lastProcessedLedger + 1,
@@ -76,10 +81,12 @@ async function pollOnce(handleEvent: EventHandler): Promise<void> {
           ` retention window — skipping to ledger ${latestLedger}. Events in` +
           ` between were missed and will not be indexed.`,
       );
+
       lastProcessedLedger = latestLedger;
       await saveCheckpoint(lastProcessedLedger);
       return;
     }
+
     throw err;
   }
 
@@ -95,6 +102,7 @@ async function pollOnce(handleEvent: EventHandler): Promise<void> {
 
   for (const event of events) {
     await handleEvent(event);
+
     // Saved per-event, not once per batch: several handlers apply relative
     // deltas (balance -= accrued, etc.), so replaying an already-applied
     // event after a crash would double-count it. Checkpointing after each
@@ -104,8 +112,13 @@ async function pollOnce(handleEvent: EventHandler): Promise<void> {
   }
 }
 
-/** Starts polling for contract events on an interval. Returns a stop function. */
-export function startIndexer(handleEvent: EventHandler): () => void {
+/**
+ * Starts polling for contract events.
+ *
+ * The returned stop function clears the polling interval and waits for all
+ * polls that were already running to finish before resolving.
+ */
+export function startIndexer(handleEvent: EventHandler): () => Promise<void> {
   if (WATCHED_CONTRACT_IDS.length === 0) {
     // Expected on a fresh local setup before contracts are deployed, not a
     // bug — pollOnce() no-ops until at least one contract id is set. Logged
@@ -115,11 +128,24 @@ export function startIndexer(handleEvent: EventHandler): () => void {
     );
   }
 
-  const interval = setInterval(() => {
-    pollOnce(handleEvent).catch((err: unknown) => {
+  const inFlightPolls = new Set<Promise<void>>();
+
+  const runPoll = (): void => {
+    const pollPromise = pollOnce(handleEvent).catch((err: unknown) => {
       console.error('indexer poll failed', err);
     });
-  }, POLL_INTERVAL_MS);
 
-  return () => clearInterval(interval);
+    inFlightPolls.add(pollPromise);
+
+    void pollPromise.then(() => {
+      inFlightPolls.delete(pollPromise);
+    });
+  };
+
+  const interval = setInterval(runPoll, POLL_INTERVAL_MS);
+
+  return async (): Promise<void> => {
+    clearInterval(interval);
+    await Promise.all(inFlightPolls);
+  };
 }
