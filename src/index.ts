@@ -24,9 +24,11 @@ app.listen({ port, host: '0.0.0.0' }).catch((err) => {
   process.exit(1);
 });
 
-// Left unwrapped so a handler failure propagates: worker.ts's own catch
-// logs it and, crucially, leaves the checkpoint unadvanced so the failed
-// event gets retried on the next poll instead of silently skipped.
+// Left unwrapped so a handler failure propagates: worker.ts catches it
+// per-event, logs it and records the event in `indexer_dead_letters` before
+// moving the checkpoint past it, so one undecodable event can't block every
+// later one. A failure it can't even record (an unreachable database) still
+// propagates all the way out, leaving the checkpoint unmoved for a retry.
 const stopIndexer = startIndexer(dispatchEvent);
 
 async function shutdown(signal: NodeJS.Signals): Promise<void> {

@@ -58,6 +58,33 @@ event, not once per batch. Several handlers apply relative deltas
 crash would double-count it. Saving after each event bounds the damage to "at
 most the in-flight event" on a crash.
 
+### Failed events
+
+A handler decodes an event's payload with unchecked casts, so an event whose
+shape does not match what the handler expects throws. That throw used to
+escape the poll loop before the checkpoint was saved, which meant the same
+event came back on the next poll, threw again, and blocked every later event
+behind it — permanently, since re-reading an undecodable event never makes it
+decodable.
+
+Each event is now handled in isolation. A failure is logged, recorded in the
+`indexer_dead_letters` table (keyed on the RPC's event id, with the ledger,
+contract id and the error message), and the checkpoint advances past it as
+normal, so one bad event costs exactly that event rather than the whole
+indexer.
+
+Nothing reads those rows automatically — they exist so a failure is
+inspectable and replayable by hand rather than silently dropped:
+
+```sql
+SELECT event_id, ledger, contract_id, error FROM indexer_dead_letters ORDER BY ledger;
+```
+
+Recording a dead letter is deliberately *not* fault-tolerant. If that write
+throws, the database is unreachable — a transient fault, not a bad event — and
+letting it propagate leaves the checkpoint unmoved so the event is retried on
+the next poll instead of being skipped over a blip.
+
 ### Out-of-window behaviour
 
 The Stellar RPC only retains a sliding window of recent ledgers (typically the

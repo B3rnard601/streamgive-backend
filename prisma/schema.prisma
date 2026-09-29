@@ -104,3 +104,24 @@ model IndexerCheckpoint {
 
   @@map("indexer_checkpoints")
 }
+
+/// Events the indexer could not decode or handle. Recording one is what
+/// lets the checkpoint advance past it: before this table existed a single
+/// event whose shape didn't match the handler's expectations threw on every
+/// poll, pinning the checkpoint and blocking every later event behind it
+/// forever. Nothing reads these rows automatically — they exist so a failure
+/// is inspectable and replayable by hand instead of silently dropped.
+model IndexerDeadLetter {
+  id         String   @id @default(uuid())
+  /// Event id as assigned by the RPC ("<ledger>-<index>"), unique per event.
+  eventId    String   @unique @map("event_id")
+  ledger     Int
+  contractId String?  @map("contract_id")
+  /// The handler's failure message, for diagnosing the shape mismatch.
+  error      String
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([ledger])
+  @@map("indexer_dead_letters")
+}
