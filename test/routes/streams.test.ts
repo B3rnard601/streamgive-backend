@@ -66,6 +66,15 @@ describe('GET /streams', () => {
     await app.close();
   });
 
+  it('400s on a malformed ngo id', async () => {
+    const app = buildServer();
+
+    const response = await app.inject({ method: 'GET', url: '/streams?ngo=not-a-uuid' });
+    expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
+
   it('pages through results with a filter applied', async () => {
     const app = buildServer();
 
