@@ -11,6 +11,7 @@ the test suite) and fill these in.
 | `NGO_REGISTRY_CONTRACT_ID`      | No*      | — (empty)                                | Deployed `ngo-registry` contract id. See `streamgive-contracts/deployments.json`. The indexer no-ops until both contract ids are set. |
 | `DONATION_VAULT_CONTRACT_ID`    | No*      | — (empty)                                | Deployed `donation-vault` contract id. Same file as above.                                       |
 | `INDEXER_POLL_INTERVAL_MS`      | No       | `5000`                                   | How often the indexer polls `getEvents`.                                                         |
+| `CORS_ORIGINS`                  | No       | `http://localhost:3001`                  | Comma-separated origins allowed to call this API from a browser.                                |
 | `ADMIN_ADDRESS`                 | No**     | — (empty)                                | Stellar public key (`G...`) that must sign requests to admin routes (`/ngo-applications` review). Admin routes 503 until this is set. Should match the `admin` configured on the deployed contracts. |
 | `NOTIFY_WEBHOOK_URL`            | No       | — (empty)                                | If set, stream lifecycle events (`stream_created`/`stream_withdrawn`/`stream_cancelled`) are POSTed here as JSON.                                |
 | `LOG_LEVEL`                     | No       | `info`                                   | Pino log level: `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace`.                     |

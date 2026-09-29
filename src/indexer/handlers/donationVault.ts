@@ -62,6 +62,7 @@ async function handleStreamCreated(event: ContractEvent): Promise<void> {
       balance: depositVal.toString(),
       withdrawn: '0',
       status: 'ACTIVE',
+      createdAt: new Date(event.ledgerClosedAt),
     },
     update: {},
   });
