@@ -60,8 +60,8 @@ export function buildServer() {
   });
 
   app.register(rateLimit, {
-    max: 100,
-    timeWindow: '1 minute',
+    max: Number(process.env.RATE_LIMIT_MAX ?? 100),
+    timeWindow: process.env.RATE_LIMIT_WINDOW ?? '1 minute',
   });
 
   app.get('/health', async () => {

@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../src/db.js';
 import { buildServer } from '../../src/server.js';
 import { fakeAddress, resetDb } from '../helpers/db.js';
+import { sep53Hash } from '../../src/middleware/adminAuth.js';
 import { signAdminRequest } from '../helpers/adminAuth.js';
 
 const adminKeypair = Keypair.random();
@@ -49,6 +50,20 @@ describe('POST /ngo-applications', () => {
       method: 'POST',
       url: '/ngo-applications',
       payload: validApplicationPayload({ contactEmail: 'not-an-email' }),
+    });
+
+    expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
+
+  it('rejects a malformed ownerAddress with 400', async () => {
+    const app = buildServer();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/ngo-applications',
+      payload: validApplicationPayload({ ownerAddress: 'invalid-stellar-address' }),
     });
 
     expect(response.statusCode).toBe(400);
