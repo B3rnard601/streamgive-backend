@@ -107,3 +107,35 @@ skipping to ledger <M>. Events in between were missed and will not be indexed.
 
 If you need complete history after an outage longer than the retention window,
 replay the missed ledger range from an archive node (not currently automated).
+
+## Polling and backoff
+
+The indexer polls on a self-rescheduling timer rather than a fixed
+`setInterval`: each poll schedules the next one only once it has settled. Two
+things follow from that. Polls can never overlap, however slow the RPC is. And
+a failed poll decides when the next attempt happens, instead of the interval
+timer firing regardless of how the previous one went.
+
+A healthy indexer polls every `INDEXER_POLL_INTERVAL_MS` (default 5s). When a
+poll fails — `getLatestLedger`, `getEvents`, or a throwing event handler — the
+delay to the next poll doubles, up to a cap of 5 minutes:
+
+| Consecutive failures               | 0  | 1  | 2   | 3   | 4   | 5   | 6    | 7+   |
+| ---------------------------------- | -- | -- | --- | --- | --- | --- | ---- | ---- |
+| Delay (at the default 5s interval) | 5s | 5s | 10s | 20s | 40s | 80s | 160s | 300s |
+
+The first failure retries at the normal interval, so a single dropped request
+costs nothing. The cap matters for two reasons: a long outage must not drift out
+to a delay that looks like a hung indexer, and the indexer still re-checks the
+endpoint at a predictable rate so recovery is detected within the cap.
+
+The counter resets on the first poll that completes, so a single success drops
+the delay straight back to `INDEXER_POLL_INTERVAL_MS` — one bad patch does not
+leave the indexer crawling for the rest of its life.
+
+Failed polls leave the checkpoint where it was, so retries re-scan the same
+ledger range. The log line names the failure count and the next delay:
+
+```
+indexer poll failed (3 in a row) — retrying in 20000ms
+```

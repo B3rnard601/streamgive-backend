@@ -176,3 +176,107 @@ describe('pollOnce', () => {
     expect(await prisma.stream.findUnique({ where: { onChainId: 9n } })).not.toBeNull();
   });
 });
+
+describe('backoff on RPC failures (#115)', () => {
+  beforeEach(() => {
+    // clearAllMocks() in the outer hook clears call history but leaves
+    // implementations in place, so a mockRejectedValue from one test would
+    // otherwise leak into the next one. Each test below sets its own.
+    vi.mocked(rpc.getLatestLedgerSequence).mockReset();
+    // Every test here drives the failure path, which logs on purpose.
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('grows the delay with each consecutive failure, up to a cap', async () => {
+    process.env.INDEXER_POLL_INTERVAL_MS = '1000';
+
+    const { backoffDelayMs } = await freshWorker();
+
+    expect(backoffDelayMs(0)).toBe(1000);
+    // One failure is not an outage: retry once at the normal interval rather
+    // than making a single blip look like one.
+    expect(backoffDelayMs(1)).toBe(1000);
+    // Then it doubles per failure.
+    expect(backoffDelayMs(2)).toBe(2000);
+    expect(backoffDelayMs(3)).toBe(4000);
+    expect(backoffDelayMs(4)).toBe(8000);
+    expect(backoffDelayMs(5)).toBe(16000);
+
+    // Capped, so a long outage still re-checks the endpoint periodically
+    // instead of drifting to a delay that looks like a hung indexer.
+    expect(backoffDelayMs(30)).toBe(5 * 60_000);
+    expect(backoffDelayMs(31)).toBe(backoffDelayMs(30));
+    // And strictly below the uncapped value it replaces.
+    expect(backoffDelayMs(30)).toBeLessThan(1000 * 2 ** 29);
+  });
+
+  it('waits longer before each retry while the RPC keeps failing', async () => {
+    process.env.INDEXER_POLL_INTERVAL_MS = '1000';
+    vi.mocked(checkpoint.getCheckpoint).mockResolvedValue(100);
+    vi.mocked(rpc.getLatestLedgerSequence).mockRejectedValue(new Error('RPC unreachable'));
+
+    const { startIndexer } = await freshWorker();
+    vi.useFakeTimers();
+
+    const stop = startIndexer(async () => {});
+
+    // Poll 1 runs immediately, fails, and schedules its retry 1s out.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(rpc.getLatestLedgerSequence).toHaveBeenCalledTimes(1);
+
+    // Still nothing at 999ms — the first retry really is a full interval away.
+    await vi.advanceTimersByTimeAsync(999);
+    expect(rpc.getLatestLedgerSequence).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(rpc.getLatestLedgerSequence).toHaveBeenCalledTimes(2);
+
+    // Poll 2 failed too, so the next wait doubles to 2s. One more second is
+    // not enough to trigger it.
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(rpc.getLatestLedgerSequence).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(rpc.getLatestLedgerSequence).toHaveBeenCalledTimes(3);
+
+    // And again to 4s: nothing at 3.9s, poll 4 at 4s.
+    await vi.advanceTimersByTimeAsync(3900);
+    expect(rpc.getLatestLedgerSequence).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(rpc.getLatestLedgerSequence).toHaveBeenCalledTimes(4);
+
+    await stop();
+  });
+
+  it('resets the delay to the poll interval after a successful poll', async () => {
+    process.env.INDEXER_POLL_INTERVAL_MS = '1000';
+    vi.mocked(checkpoint.getCheckpoint).mockResolvedValue(100);
+    vi.mocked(rpc.getLatestLedgerSequence)
+      .mockRejectedValueOnce(new Error('RPC unreachable'))
+      .mockRejectedValueOnce(new Error('RPC unreachable'))
+      .mockResolvedValue(500);
+
+    const { startIndexer } = await freshWorker();
+    vi.useFakeTimers();
+
+    const stop = startIndexer(async () => {});
+
+    // Two failures, so the counter is at 2 and the next delay would be 4s...
+    await vi.advanceTimersByTimeAsync(0); // poll 1 fails, retry in 1s
+    await vi.advanceTimersByTimeAsync(1000); // poll 2 fails, retry in 2s
+    expect(rpc.getLatestLedgerSequence).toHaveBeenCalledTimes(2);
+
+    // ...but poll 3 gets a response, which clears the counter and drops the
+    // next delay straight back to the poll interval.
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(rpc.getLatestLedgerSequence).toHaveBeenCalledTimes(3);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(rpc.getLatestLedgerSequence).toHaveBeenCalledTimes(4);
+
+    await stop();
+  });
+});
