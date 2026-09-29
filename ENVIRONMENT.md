@@ -14,6 +14,7 @@ the test suite) and fill these in.
 | `CORS_ORIGINS`                  | No       | `http://localhost:3001`                  | Comma-separated origins allowed to call this API from a browser.                                |
 | `ADMIN_ADDRESS`                 | No**     | — (empty)                                | Stellar public key (`G...`) that must sign requests to admin routes (`/ngo-applications` review). Admin routes 503 until this is set. Should match the `admin` configured on the deployed contracts. |
 | `NOTIFY_WEBHOOK_URL`            | No       | — (empty)                                | If set, stream lifecycle events (`stream_created`/`stream_withdrawn`/`stream_cancelled`) are POSTed here as JSON.                                |
+| `NOTIFY_WEBHOOK_SECRET`         | No       | — (empty)                                | If set, every webhook POST carries an `x-streamgive-signature` header holding the lower-case hex HMAC-SHA256 of the raw request body, keyed with this value, so receivers can reject forged notifications. The header is omitted entirely when this is unset. See the README's notification section for the verification recipe. |
 | `LOG_LEVEL`                     | No       | `info`                                   | Pino log level: `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace`.                     |
 | `NODE_ENV`                      | No       | unset (treated as development)           | Set to `production` to switch logging to structured JSON instead of pino-pretty. Set automatically inside the Docker image. |
 
