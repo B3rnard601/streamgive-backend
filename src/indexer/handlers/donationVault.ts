@@ -99,6 +99,7 @@ async function handleWithdraw(event: ContractEvent): Promise<void> {
     data: {
       balance: (BigInt(stream.balance) - accrued).toString(),
       withdrawn: (BigInt(stream.withdrawn) + accrued).toString(),
+      updatedAt: new Date(event.ledgerClosedAt),
     },
   });
 
@@ -137,6 +138,7 @@ async function handleCancel(event: ContractEvent): Promise<void> {
       balance: '0',
       rate: '0',
       status: 'CANCELLED',
+      updatedAt: new Date(event.ledgerClosedAt),
     },
   });
 

@@ -27,7 +27,7 @@ describe('Atomic Event Processing & Checkpointing (#40)', () => {
     };
 
     // Simulate event processing function
-    const processEvent = async (event: any) => {
+    const processEvent = async (event: { id: string; amount: number }) => {
       await mockPrisma.$transaction(async (tx) => {
         // Apply withdraw
         await tx.userBalance.update({ decrement: { balance: event.amount } });
