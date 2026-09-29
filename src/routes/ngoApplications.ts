@@ -38,7 +38,14 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
     '/ngo-applications',
     // Public write endpoint — tighter than the global default since it's
     // the most spam-prone route in the API.
-    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    {
+      config: {
+        rateLimit: {
+          max: Number(process.env.RATE_LIMIT_APPLICATION_MAX ?? 5),
+          timeWindow: process.env.RATE_LIMIT_APPLICATION_WINDOW ?? '1 minute',
+        },
+      },
+    },
     async (request, reply) => {
       const parsed = applicationSchema.safeParse(request.body);
       if (!parsed.success) {
