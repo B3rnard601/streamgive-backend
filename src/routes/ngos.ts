@@ -57,6 +57,8 @@ async function findNgoDetail(where: { id: string } | { ownerAddress: string }) {
 
   return {
     ...profile,
+    name: profile.name || null,
+    registered: profile.name !== '',
     description: approvedApp?.description ?? null,
     website: approvedApp?.website ?? null,
     country: approvedApp?.country ?? null,
