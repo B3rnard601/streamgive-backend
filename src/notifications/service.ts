@@ -1,6 +1,10 @@
 import type { NotificationEvent } from './types.js';
 
 async function notifyWebhook(event: NotificationEvent): Promise<void> {
+  // Deliberately read per call rather than captured at module load: hoisting
+  // this to a module-level constant freezes the URL at import time, so a
+  // value set (or rotated) later in the process lifetime would be ignored
+  // until a restart. test/notifications/service.test.ts guards this.
   const webhookUrl = process.env.NOTIFY_WEBHOOK_URL;
   if (!webhookUrl) return;
 
