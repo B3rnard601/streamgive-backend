@@ -49,9 +49,13 @@ export function buildServer() {
     timeWindow: '1 minute',
   });
 
-  app.get('/health', async () => {
-    await prisma.$queryRaw`SELECT 1`;
-    return { status: 'ok' };
+  app.get('/health', async (_request, reply) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      return { status: 'ok' };
+    } catch {
+      return reply.code(503).send({ status: 'error', database: 'unreachable' });
+    }
   });
 
   app.register(ngoRoutes);
