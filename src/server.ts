@@ -7,6 +7,7 @@ import { prisma } from './db.js';
 import { donorRoutes } from './routes/donors.js';
 import { impactRoutes } from './routes/impact.js';
 import { indexerStatusRoutes } from './routes/indexerStatus.js';
+import { getLatestLedgerSequence } from './stellar/rpc.js';
 import { ngoApplicationRoutes } from './routes/ngoApplications.js';
 import { ngoRoutes } from './routes/ngos.js';
 import { streamRoutes } from './routes/streams.js';
@@ -143,13 +144,17 @@ export function buildServer(options?: BuildServerOptions) {
     timeWindow: process.env.RATE_LIMIT_WINDOW ?? '1 minute',
   });
 
-  app.get('/health', async (_request, reply) => {
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      return { status: 'ok' };
-    } catch {
-      return reply.code(503).send({ status: 'error', database: 'unreachable' });
-    }
+  app.get('/health', async (_req, reply) => {
+    const [dbResult, rpcResult] = await Promise.allSettled([
+      prisma.$queryRaw`SELECT 1`,
+      getLatestLedgerSequence(),
+    ]);
+
+    const db = dbResult.status === 'fulfilled' ? 'ok' : 'error';
+    const rpc = rpcResult.status === 'fulfilled' ? 'ok' : 'error';
+
+    const status = db === 'ok' && rpc === 'ok' ? 'ok' : 'error';
+    return reply.code(status === 'ok' ? 200 : 503).send({ status, db, rpc });
   });
 
   app.register(ngoRoutes);
