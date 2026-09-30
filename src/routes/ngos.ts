@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { prisma } from '../db.js';
+import { requireAdminSignature } from '../middleware/adminAuth.js';
 
 const idParamSchema = z.object({ id: z.string().uuid() });
 
@@ -20,6 +21,17 @@ const lookupQuerySchema = z.object({
   address: z
     .string()
     .regex(/^G[A-Z2-7]{55}$/),
+});
+
+const adminListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(100),
+  cursor: z.string().uuid().optional(),
+  // Optional boolean filter as a query string (so 'true'/'false' arrive as
+  // strings); omitted means "everything, verified or not".
+  verified: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
 });
 
 /** Builds the GET /ngos/:id response shape from a unique Prisma `where`. */
@@ -99,6 +111,34 @@ export async function ngoRoutes(app: FastifyInstance): Promise<void> {
         ...(q ? { name: { contains: q, mode: 'insensitive' } } : {}),
       },
       orderBy,
+      take: limit + 1,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    });
+
+    const hasMore = rows.length > limit;
+    const ngos = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore ? ngos[ngos.length - 1].id : null;
+
+    return { ngos, nextCursor };
+  });
+
+  // Admin counterpart to GET /ngos above: also returns the unverified rows
+  // the indexer creates (a `register` event, or a stream to an address that
+  // never registered) — exactly what an admin needs to spot streams pointed
+  // at NGOs that aren't in the public directory. Optionally narrowed with
+  // ?verified=true|false.
+  app.get('/ngos/all', { preHandler: requireAdminSignature }, async (request, reply) => {
+    const parsedQuery = adminListQuerySchema.safeParse(request.query);
+    if (!parsedQuery.success) {
+      return reply
+        .code(400)
+        .send({ error: 'invalid_request', details: parsedQuery.error.flatten() });
+    }
+    const { limit, cursor, verified } = parsedQuery.data;
+
+    const rows = await prisma.ngo.findMany({
+      where: verified === undefined ? {} : { verified },
+      orderBy: { createdAt: 'desc' },
       take: limit + 1,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
     });
