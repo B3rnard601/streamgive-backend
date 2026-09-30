@@ -152,16 +152,18 @@ describe('GET /streams', () => {
     expect(firstBody.streams).toHaveLength(2);
     expect(firstBody.hasMore).toBe(true);
     expect(firstBody.streams.map((s: { onChainId: string }) => s.onChainId)).toEqual(['3', '2']);
+    expect(firstBody.nextCursor).toBe(firstBody.streams[1].id);
 
     const secondPage = await app.inject({
       method: 'GET',
-      url: `/streams?ngo=${ngo.id}&limit=2&cursor=${firstBody.streams[1].id}`,
+      url: `/streams?ngo=${ngo.id}&limit=2&cursor=${firstBody.nextCursor}`,
     });
     expect(secondPage.statusCode).toBe(200);
     const secondBody = secondPage.json();
     expect(secondBody.streams).toHaveLength(1);
     expect(secondBody.streams[0].onChainId).toBe('1');
     expect(secondBody.hasMore).toBe(false);
+    expect(secondBody.nextCursor).toBeNull();
 
     await app.close();
   });
