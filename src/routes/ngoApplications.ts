@@ -225,11 +225,15 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
 
       try {
         return await prisma.ngoApplication.update({
-          where: { id },
-          data: { status: 'APPROVED', reviewNote: parsed.data.reviewNote },
+          where: { id, status: 'PENDING' },
+          data: { status: 'APPROVED', reviewNote: parsed.data?.reviewNote },
         });
       } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+        if (
+          typeof err === 'object' &&
+          err !== null &&
+          (err as { code?: string }).code === 'P2025'
+        ) {
           return reply.code(404).send({ error: 'not_found' });
         }
         throw err;
@@ -262,11 +266,15 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
 
       try {
         return await prisma.ngoApplication.update({
-          where: { id },
-          data: { status: 'REJECTED', reviewNote: parsed.data.reviewNote },
+          where: { id, status: 'PENDING' },
+          data: { status: 'REJECTED', reviewNote: parsed.data?.reviewNote },
         });
       } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+        if (
+          typeof err === 'object' &&
+          err !== null &&
+          (err as { code?: string }).code === 'P2025'
+        ) {
           return reply.code(404).send({ error: 'not_found' });
         }
         throw err;
