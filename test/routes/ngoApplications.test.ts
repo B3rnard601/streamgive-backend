@@ -214,6 +214,20 @@ describe('admin NGO application review', () => {
     await app.close();
   });
 
+  it('rejects replaying the same signed request within the freshness window', async () => {
+    const app = buildServer();
+    const headers = signAdminRequest(adminKeypair, 'GET', '/ngo-applications');
+
+    const first = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
+    expect(first.statusCode).toBe(200);
+
+    const replay = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
+    expect(replay.statusCode).toBe(401);
+    expect(replay.json().error).toBe('replayed_signature');
+
+    await app.close();
+  });
+
   it('approves a pending application', async () => {
     const app = buildServer();
 
