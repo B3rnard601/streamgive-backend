@@ -4,7 +4,6 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../src/db.js';
 import { buildServer } from '../../src/server.js';
 import { fakeAddress, resetDb } from '../helpers/db.js';
-import { sep53Hash } from '../../src/middleware/adminAuth.js';
 import { signAdminRequest } from '../helpers/adminAuth.js';
 
 const adminKeypair = Keypair.random();
@@ -202,6 +201,22 @@ describe('admin NGO application review', () => {
     expect(response.statusCode).toBe(401);
 
     await app.close();
+  });
+
+  it('returns 503 when admin authentication is not configured', async () => {
+    const app = buildServer();
+    const configuredAddress = process.env.ADMIN_ADDRESS;
+    delete process.env.ADMIN_ADDRESS;
+
+    try {
+      const response = await app.inject({ method: 'GET', url: '/ngo-applications' });
+      expect(response.statusCode).toBe(503);
+      expect(response.json().error).toBe('admin_auth_not_configured');
+    } finally {
+      if (configuredAddress === undefined) delete process.env.ADMIN_ADDRESS;
+      else process.env.ADMIN_ADDRESS = configuredAddress;
+      await app.close();
+    }
   });
 
   it('allows a correctly signed admin request', async () => {
