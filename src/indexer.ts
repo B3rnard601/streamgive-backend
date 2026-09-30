@@ -1,4 +1,3 @@
-
 export function startIndexer(pollOnce: () => Promise<void>, intervalMs: number) {
   let timeoutId: NodeJS.Timeout | null = null;
   let isStopped = false;
@@ -42,8 +41,17 @@ export function startIndexer(pollOnce: () => Promise<void>, intervalMs: number) 
   };
 }
 
-export async function pollOnce(rpcClient: any, processEvent: (event: any) => Promise<void>) {
-  let currentCursor = await getStoredCursor();
+export interface GetEventsPage {
+  events: Array<{ id: string }>;
+  nextCursor?: string;
+}
+
+export async function pollOnce(
+  rpcClient: { getEvents: (args: { cursor?: string; limit: number }) => Promise<GetEventsPage> },
+  processEvent: (event: { id: string }) => Promise<void>,
+) {
+  // No stored cursor yet: start from the beginning of the event stream.
+  let currentCursor: string | undefined;
   const PAGE_LIMIT = 100; // Adjust according to your RPC client configuration
   let hasMore = true;
 

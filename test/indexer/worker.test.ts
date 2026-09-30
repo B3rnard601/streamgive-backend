@@ -66,7 +66,11 @@ describe('worker bootstrap (no existing checkpoint)', () => {
     await runWorkerBriefly(startIndexer);
 
     expect(checkpoint.saveCheckpoint).toHaveBeenCalledWith(1000);
-    expect(rpc.getLatestLedgerSequence).not.toHaveBeenCalled();
+    // The bootstrap checkpoint comes from INDEXER_START_LEDGER, not from the
+    // chain tip. Later polls do read the latest ledger to follow the chain,
+    // so it must only be the *first* save that uses the env var.
+    expect(checkpoint.saveCheckpoint).toHaveBeenNthCalledWith(1, 1000);
+    expect(checkpoint.saveCheckpoint).not.toHaveBeenNthCalledWith(1, 9999);
   });
 
   it('falls back to the latest ledger when INDEXER_START_LEDGER is not set', async () => {

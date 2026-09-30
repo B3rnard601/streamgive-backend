@@ -25,12 +25,11 @@ export function buildServer() {
     },
   });
 
-  app.setErrorHandler((error, request, reply) => {
+  app.setErrorHandler((error: unknown, request, reply) => {
     request.log.error(error);
+    const err = error as { statusCode?: number };
     const statusCode =
-      error.statusCode && error.statusCode >= 400 && error.statusCode < 600
-        ? error.statusCode
-        : 500;
+      err.statusCode && err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : 500;
     const errorString =
       statusCode === 404
         ? 'not_found'
