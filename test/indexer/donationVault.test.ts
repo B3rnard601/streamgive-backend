@@ -95,6 +95,7 @@ describe('handleDonationVaultEvent', () => {
     const stream = await prisma.stream.findUnique({ where: { onChainId: 3n } });
     expect(stream?.balance).toBe('0');
     expect(stream?.rate).toBe('0');
+    expect(stream?.lastRate).toBe('10'); // original rate preserved from before cancel
     expect(stream?.withdrawn).toBe('500'); // 200 already withdrawn + 300 settled on cancel
     expect(stream?.status).toBe('CANCELLED');
   });

@@ -135,6 +135,7 @@ async function handleCancel(event: ContractEvent): Promise<void> {
     data: {
       withdrawn: (BigInt(stream.withdrawn) + accrued).toString(),
       balance: '0',
+      lastRate: stream.rate,
       rate: '0',
       status: 'CANCELLED',
     },

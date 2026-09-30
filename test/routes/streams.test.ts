@@ -334,6 +334,38 @@ describe('GET /streams', () => {
 
     await app.close();
   });
+  it('exposes lastRate for a cancelled stream via GET /streams/:id', async () => {
+    const app = buildServer();
+
+    const donor = await prisma.donor.create({ data: { address: fakeAddress('M') } });
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('N'), name: 'NGO N', verified: true },
+    });
+    const stream = await prisma.stream.create({
+      data: {
+        onChainId: 99n,
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('O'),
+        rate: '0',
+        lastRate: '42',
+        balance: '0',
+        withdrawn: '0',
+        status: 'CANCELLED',
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: `/streams/${stream.id}` });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body.rate).toBe('0');
+    expect(body.lastRate).toBe('42');
+    expect(body.status).toBe('CANCELLED');
+
+    await app.close();
+  });
+
 });
 
 describe('GET /streams/:id', () => {
