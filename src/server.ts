@@ -1,4 +1,5 @@
 import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import Fastify from 'fastify';
 
@@ -38,6 +39,12 @@ export function buildServer() {
           ? 'invalid_request'
           : 'internal_server_error';
     reply.code(statusCode).send({ error: errorString });
+  });
+
+  // Register helmet for security headers
+  app.register(helmet, {
+    contentSecurityPolicy: false, // Disabled for API-only server
+    global: true,
   });
 
   // The browser app runs on a different origin to this API (a different
