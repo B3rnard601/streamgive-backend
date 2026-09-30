@@ -40,7 +40,7 @@ async function freshWorker() {
   }));
   vi.doMock('../../src/stellar/rpc.js', () => ({
     getLatestLedgerSequence: rpc.getLatestLedgerSequence,
-    rpcServer: { getEvents: vi.fn().mockResolvedValue({ events: [] }) },
+    rpcServer: rpc.rpcServer,
   }));
   vi.doMock('../../src/indexer/contracts.js', () => ({
     WATCHED_CONTRACT_IDS: ['CONTRACT_A'],
@@ -66,7 +66,6 @@ describe('worker bootstrap (no existing checkpoint)', () => {
     await runWorkerBriefly(startIndexer);
 
     expect(checkpoint.saveCheckpoint).toHaveBeenCalledWith(1000);
-    expect(rpc.getLatestLedgerSequence).not.toHaveBeenCalled();
   });
 
   it('falls back to the latest ledger when INDEXER_START_LEDGER is not set', async () => {
@@ -90,5 +89,16 @@ describe('worker bootstrap (no existing checkpoint)', () => {
 
     // Resumed from existing checkpoint — the env var must be ignored
     expect(checkpoint.saveCheckpoint).not.toHaveBeenCalledWith(1000);
+  });
+
+  it('advances the checkpoint when the latest ledger has no events', async () => {
+    vi.mocked(checkpoint.getCheckpoint).mockResolvedValue(100);
+    vi.mocked(rpc.getLatestLedgerSequence).mockResolvedValue(125);
+    vi.mocked(rpc.rpcServer.getEvents).mockResolvedValue({ events: [] });
+
+    const { startIndexer } = await freshWorker();
+    await runWorkerBriefly(startIndexer);
+
+    expect(checkpoint.saveCheckpoint).toHaveBeenCalledWith(125);
   });
 });
