@@ -329,3 +329,122 @@ describe('GET /ngos/:id', () => {
     await app.close();
   });
 });
+
+describe('GET /ngos/:id/donors', () => {
+  afterEach(async () => {
+    await resetDb();
+  });
+
+  it('returns distinct donors with per-NGO committed totals and paginates them', async () => {
+    const app = buildServer();
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('H'), name: 'Food Fund', verified: true },
+    });
+    const otherNgo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('I'), name: 'Other Fund', verified: true },
+    });
+    const donors = await Promise.all(
+      ['J', 'K', 'L'].map((char) =>
+        prisma.donor.create({ data: { address: fakeAddress(char) } }),
+      ),
+    );
+
+    await prisma.stream.createMany({
+      data: [
+        {
+          onChainId: 10n,
+          donorId: donors[0].id,
+          ngoId: ngo.id,
+          tokenAddress: fakeAddress('M'),
+          rate: '1',
+          balance: '40',
+          withdrawn: '10',
+          status: 'ACTIVE',
+        },
+        {
+          onChainId: 11n,
+          donorId: donors[0].id,
+          ngoId: ngo.id,
+          tokenAddress: fakeAddress('M'),
+          rate: '1',
+          balance: '999',
+          withdrawn: '20',
+          status: 'CANCELLED',
+        },
+        {
+          onChainId: 12n,
+          donorId: donors[1].id,
+          ngoId: ngo.id,
+          tokenAddress: fakeAddress('M'),
+          rate: '1',
+          balance: '30',
+          withdrawn: '5',
+          status: 'ACTIVE',
+        },
+        {
+          onChainId: 13n,
+          donorId: donors[2].id,
+          ngoId: ngo.id,
+          tokenAddress: fakeAddress('M'),
+          rate: '1',
+          balance: '7',
+          withdrawn: '3',
+          status: 'ACTIVE',
+        },
+        {
+          onChainId: 14n,
+          donorId: donors[0].id,
+          ngoId: otherNgo.id,
+          tokenAddress: fakeAddress('M'),
+          rate: '1',
+          balance: '1000',
+          withdrawn: '0',
+          status: 'ACTIVE',
+        },
+      ],
+    });
+
+    const first = await app.inject({ method: 'GET', url: `/ngos/${ngo.id}/donors?limit=2` });
+    expect(first.statusCode).toBe(200);
+    const firstBody = first.json();
+    expect(firstBody.donors).toHaveLength(2);
+    expect(firstBody.nextCursor).not.toBeNull();
+
+    const second = await app.inject({
+      method: 'GET',
+      url: `/ngos/${ngo.id}/donors?limit=2&cursor=${firstBody.nextCursor}`,
+    });
+    expect(second.statusCode).toBe(200);
+    const secondBody = second.json();
+    expect(secondBody.donors).toHaveLength(1);
+    expect(secondBody.nextCursor).toBeNull();
+
+    const totals = new Map(
+      [...firstBody.donors, ...secondBody.donors].map(
+        (donor: { id: string; totalCommitted: string }) => [donor.id, donor.totalCommitted],
+      ),
+    );
+    expect(totals).toEqual(
+      new Map([
+        [donors[0].id, '70'],
+        [donors[1].id, '35'],
+        [donors[2].id, '10'],
+      ]),
+    );
+
+    await app.close();
+  });
+
+  it('returns 404 for an unknown NGO', async () => {
+    const app = buildServer();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ngos/00000000-0000-0000-0000-000000000000/donors',
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: 'not_found' });
+    await app.close();
+  });
+});
