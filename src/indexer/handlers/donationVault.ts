@@ -69,6 +69,7 @@ async function handleStreamCreated(event: ContractEvent): Promise<void> {
 
   await notify({
     type: 'stream_created',
+    eventId: event.id,
     streamId: onChainId.toString(),
     donorAddress: donorVal.toString(),
     ngoId: ngo.id,
@@ -104,6 +105,7 @@ async function handleWithdraw(event: ContractEvent): Promise<void> {
 
   await notify({
     type: 'stream_withdrawn',
+    eventId: event.id,
     streamId: onChainId.toString(),
     amount: accrued.toString(),
   });
@@ -142,6 +144,7 @@ async function handleCancel(event: ContractEvent): Promise<void> {
 
   await notify({
     type: 'stream_cancelled',
+    eventId: event.id,
     streamId: onChainId.toString(),
     settledToNgo: accrued.toString(),
     refundToDonor: refund.toString(),
