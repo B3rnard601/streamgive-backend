@@ -66,7 +66,10 @@ describe('worker bootstrap (no existing checkpoint)', () => {
     await runWorkerBriefly(startIndexer);
 
     expect(checkpoint.saveCheckpoint).toHaveBeenCalledWith(1000);
-    expect(rpc.getLatestLedgerSequence).not.toHaveBeenCalled();
+    // getLatestLedgerSequence may be called on subsequent poll ticks for
+    // range comparisons, but the initial checkpoint must come from
+    // INDEXER_START_LEDGER, not from the RPC's latest ledger.
+    expect(checkpoint.saveCheckpoint).not.toHaveBeenCalledWith(9999);
   });
 
   it('falls back to the latest ledger when INDEXER_START_LEDGER is not set', async () => {
