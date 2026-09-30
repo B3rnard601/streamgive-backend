@@ -213,6 +213,28 @@ describe('admin NGO application review', () => {
     await app.close();
   });
 
+  it('paginates applications while reporting the full total', async () => {
+    const app = buildServer();
+    await Promise.all(
+      ['A', 'B', 'C'].map((suffix) =>
+        prisma.ngoApplication.create({ data: validApplicationPayload({ ownerAddress: fakeAddress(suffix) }) }),
+      ),
+    );
+
+    const url = '/ngo-applications?limit=2&offset=1';
+    const headers = signAdminRequest(adminKeypair, 'GET', url);
+    const response = await app.inject({ method: 'GET', url, headers });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.total).toBe(3);
+    expect(body.limit).toBe(2);
+    expect(body.offset).toBe(1);
+    expect(body.applications).toHaveLength(2);
+
+    await app.close();
+  });
+
   it('approves a pending application', async () => {
     const app = buildServer();
 
