@@ -140,7 +140,7 @@ describe('GET /ngo-applications/status', () => {
     const body = response.json();
     expect(body.status).toBe('APPROVED');
     expect(body.createdAt).toBe(latest.createdAt.toISOString());
-    expect(body.updatedAt).toBe(latest.updatedAt.toISOString());
+    expect(body.updatedAt).toBe&latest.updatedAt.toISOString());
     // No contact details or other application fields leak out.
     expect(Object.keys(body).sort()).toEqual(['createdAt', 'status', 'updatedAt']);
 
@@ -210,6 +210,19 @@ describe('admin NGO application review', () => {
 
     const response = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
     expect(response.statusCode).toBe(200);
+
+    await app.close();
+  });
+
+  it('rejects a seconds-based timestamp with a clear unit error', async () => {
+    const app = buildServer();
+    const headers = signAdminRequest(adminKeypair, 'GET', '/ngo-applications', {
+      timestamp: Math.floor(Date.now() / 1000),
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
+    expect(response.statusCode).toBe(401);
+    expect(response.json().error).toBe('invalid_timestamp_unit');
 
     await app.close();
   });
