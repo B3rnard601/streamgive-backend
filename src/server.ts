@@ -3,6 +3,7 @@ import rateLimit from '@fastify/rate-limit';
 import Fastify from 'fastify';
 
 import { prisma } from './db.js';
+import { donorRoutes } from './routes/donors.js';
 import { impactRoutes } from './routes/impact.js';
 import { ngoApplicationRoutes } from './routes/ngoApplications.js';
 import { ngoRoutes } from './routes/ngos.js';
@@ -70,6 +71,7 @@ export function buildServer() {
   });
 
   app.register(ngoRoutes);
+  app.register(donorRoutes);
   app.register(streamRoutes);
   app.register(impactRoutes);
   app.register(ngoApplicationRoutes);
