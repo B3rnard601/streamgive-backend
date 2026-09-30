@@ -75,6 +75,36 @@ describe('GET /streams', () => {
     await app.close();
   });
 
+  it('coerces a string limit and rejects values above the maximum', async () => {
+    const app = buildServer();
+
+    const donor = await prisma.donor.create({ data: { address: fakeAddress('L') } });
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('M'), name: 'Limit NGO', verified: true },
+    });
+    await prisma.stream.createMany({
+      data: Array.from({ length: 3 }, (_, index) => ({
+        onChainId: BigInt(50 + index),
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('N'),
+        rate: '1',
+        balance: '100',
+        withdrawn: '0',
+      })),
+    });
+
+    const coerced = await app.inject({ method: 'GET', url: `/streams?ngo=${ngo.id}&limit=2` });
+    expect(coerced.statusCode).toBe(200);
+    expect(coerced.json().streams).toHaveLength(2);
+    expect(coerced.json().hasMore).toBe(true);
+
+    const tooLarge = await app.inject({ method: 'GET', url: `/streams?ngo=${ngo.id}&limit=101` });
+    expect(tooLarge.statusCode).toBe(400);
+
+    await app.close();
+  });
+
   it('pages through results with a filter applied', async () => {
     const app = buildServer();
 
