@@ -1,5 +1,3 @@
-
-import { PrismaClient } from '@prisma/client';
 import { getLatestLedgerSequence, rpcServer } from '../stellar/rpc.js';
 import { getCheckpoint, saveCheckpoint } from './checkpoint.js';
 import { WATCHED_CONTRACT_IDS } from './contracts.js';
@@ -17,6 +15,8 @@ export type EventHandler = (event: ContractEvent) => Promise<void>;
 // the DB just to read the starting point; the source of truth is always
 // the `indexer_checkpoints` row, written after every processed event.
 let lastProcessedLedger: number | undefined;
+export const INDEXER_FAILURE_ESCALATION_THRESHOLD = 5;
+let consecutivePollFailures = 0;
 
 /** The RPC rejects an out-of-window startLedger with JSON-RPC -32600 and a
  *  message naming the range it does serve. There is no dedicated error code
@@ -27,9 +27,7 @@ function isLedgerOutOfRange(err: unknown): boolean {
     err !== null &&
     'message' in err &&
     typeof (err as { message: unknown }).message === 'string' &&
-    (err as { message: string }).message.includes(
-      'startLedger must be within the ledger range',
-    )
+    (err as { message: string }).message.includes('startLedger must be within the ledger range')
   );
 }
 
@@ -136,63 +134,29 @@ export function startIndexer(handleEvent: EventHandler): () => Promise<void> {
   const inFlightPolls = new Set<Promise<void>>();
 
   const runPoll = (): void => {
-    const pollPromise = pollOnce(handleEvent).catch((err: unknown) => {
-      console.error('indexer poll failed', err);
-    });
-
-  return () => clearInterval(interval);
-}
-
-
-
-export class EventWorker {
-  constructor(private prisma: PrismaClient) {}
-
-  async processEvent(event: { id: string; type: string; data: any }, currentBlock: number) {
-    // Execute event handling and checkpoint save atomically using prisma.$transaction
-    await this.prisma.$transaction(async (tx) => {
-      // 1. Optional: Check if event was already processed (idempotency guard)
-      // const existing = await tx.processedEvent.findUnique({ where: { id: event.id } });
-      // if (existing) return;
-
-      // 2. Run handler with transaction client
-      if (event.type === 'WITHDRAW') {
-        await this.handleWithdraw(tx, event.data);
-      } else {
-        // Handle other event types with tx
-      }
-
-      // 3. Save checkpoint within the same transaction
-      await tx.checkpoint.upsert({
-        where: { id: 'singleton' },
-        update: { lastBlock: currentBlock },
-        create: { id: 'singleton', lastBlock: currentBlock },
+    const pollPromise = pollOnce(handleEvent)
+      .then(() => {
+        consecutivePollFailures = 0;
+      })
+      .catch((err: unknown) => {
+        consecutivePollFailures += 1;
+        if (consecutivePollFailures >= INDEXER_FAILURE_ESCALATION_THRESHOLD) {
+          console.error('indexer poll failure threshold exceeded', {
+            consecutiveFailures: consecutivePollFailures,
+            error: err,
+          });
+        } else {
+          console.error('indexer poll failed', err);
+        }
       });
+    inFlightPolls.add(pollPromise);
+    void pollPromise.finally(() => inFlightPolls.delete(pollPromise));
+  };
 
-      // 4. Mark event as processed (if using processed events table)
-      // await tx.processedEvent.create({ data: { id: event.id } });
-    });
-  }
-
-  private async handleWithdraw(tx: any, data: { userId: string; amount: number }) {
-    // Apply balance update using transaction client
-    await tx.userBalance.update({
-      where: { userId: data.userId },
-      decrement: { balance: data.amount },
-    });
-  }
+  runPoll();
+  const interval = setInterval(runPoll, POLL_INTERVAL_MS);
+  return async () => {
+    clearInterval(interval);
+    await Promise.all(inFlightPolls);
+  };
 }
-
-// Inside event processing / transaction logic
-await tx.indexerCheckpoint.upsert({
-  where: { id: 'singleton' },
-  update: {
-    lastLedger: event.ledger,
-    lastEventId: event.id, // Save event ID for intra-ledger resumption
-  },
-  create: {
-    id: 'singleton',
-    lastLedger: event.ledger,
-    lastEventId: event.id,
-  },
-});
