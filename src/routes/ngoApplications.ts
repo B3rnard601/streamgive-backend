@@ -9,7 +9,13 @@ const applicationSchema = z.object({
   ownerAddress: z.string().regex(/^G[A-Z2-7]{55}$/),
   name: z.string().min(1).max(200),
   description: z.string().min(1).max(5000),
-  website: z.string().url().optional(),
+  // Normalize scheme-less domains (e.g. "example.org") to "https://example.org"
+  // before URL validation so applicants who omit the scheme aren't blocked.
+  website: z
+    .string()
+    .transform((val) => (val && !/^https?:\/\//i.test(val) ? `https://${val}` : val))
+    .pipe(z.string().url())
+    .optional(),
   contactEmail: z.string().email(),
   country: z.string().max(100).optional(),
 });
