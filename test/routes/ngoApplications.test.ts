@@ -4,7 +4,6 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../src/db.js';
 import { buildServer } from '../../src/server.js';
 import { fakeAddress, resetDb } from '../helpers/db.js';
-import { sep53Hash } from '../../src/middleware/adminAuth.js';
 import { signAdminRequest } from '../helpers/adminAuth.js';
 
 const adminKeypair = Keypair.random();
@@ -200,6 +199,18 @@ describe('admin NGO application review', () => {
 
     const response = await app.inject({ method: 'GET', url: '/ngo-applications' });
     expect(response.statusCode).toBe(401);
+
+    await app.close();
+  });
+
+  it('rejects a validly encoded signature with the wrong byte length', async () => {
+    const app = buildServer();
+    const headers = signAdminRequest(adminKeypair, 'GET', '/ngo-applications');
+    headers['x-admin-signature'] = Buffer.alloc(63).toString('base64');
+
+    const response = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
+    expect(response.statusCode).toBe(401);
+    expect(response.json().error).toBe('unauthorized');
 
     await app.close();
   });
