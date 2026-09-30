@@ -1,4 +1,3 @@
-import { Prisma } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -158,16 +157,9 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
         return reply.code(400).send({ error: 'invalid_request', details: parsed.error.flatten() });
       }
 
-      try {
-        return await prisma.ngoApplication.update({
-          where: { id },
-          data: { status: 'APPROVED', reviewNote: parsed.data.reviewNote },
-        });
-      } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
-          return reply.code(404).send({ error: 'not_found' });
-        }
-        throw err;
+      const application = await prisma.ngoApplication.findUnique({ where: { id } });
+      if (!application) {
+        return reply.code(404).send({ error: 'not_found' });
       }
       if (application.status !== 'PENDING') {
         return reply.code(409).send({ error: 'already_reviewed' });
@@ -195,16 +187,9 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
         return reply.code(400).send({ error: 'invalid_request', details: parsed.error.flatten() });
       }
 
-      try {
-        return await prisma.ngoApplication.update({
-          where: { id },
-          data: { status: 'REJECTED', reviewNote: parsed.data.reviewNote },
-        });
-      } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
-          return reply.code(404).send({ error: 'not_found' });
-        }
-        throw err;
+      const application = await prisma.ngoApplication.findUnique({ where: { id } });
+      if (!application) {
+        return reply.code(404).send({ error: 'not_found' });
       }
       if (application.status !== 'PENDING') {
         return reply.code(409).send({ error: 'already_reviewed' });

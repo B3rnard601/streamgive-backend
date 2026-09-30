@@ -25,7 +25,7 @@ export function buildServer() {
     },
   });
 
-  app.setErrorHandler((error, request, reply) => {
+  app.setErrorHandler<Error & { statusCode?: number }>((error, request, reply) => {
     request.log.error(error);
     const statusCode =
       error.statusCode && error.statusCode >= 400 && error.statusCode < 600
