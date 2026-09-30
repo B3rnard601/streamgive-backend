@@ -351,3 +351,67 @@ describe('admin NGO application review', () => {
     await app.close();
   });
 });
+
+describe('GET /ngo-applications/stats', () => {
+  beforeAll(() => {
+    process.env.ADMIN_ADDRESS = adminKeypair.publicKey();
+  });
+
+  afterEach(async () => {
+    await resetDb();
+  });
+
+  it('rejects an unsigned request with 401', async () => {
+    const app = buildServer();
+
+    const response = await app.inject({ method: 'GET', url: '/ngo-applications/stats' });
+    expect(response.statusCode).toBe(401);
+
+    await app.close();
+  });
+
+  it('returns counts grouped by status for a signed admin', async () => {
+    const app = buildServer();
+
+    await prisma.ngoApplication.createMany({
+      data: [
+        validApplicationPayload({ ownerAddress: fakeAddress('P'), status: 'PENDING' }),
+        validApplicationPayload({ ownerAddress: fakeAddress('P'), status: 'PENDING' }),
+        validApplicationPayload({ ownerAddress: fakeAddress('A'), status: 'APPROVED' }),
+        validApplicationPayload({ ownerAddress: fakeAddress('R'), status: 'REJECTED' }),
+      ],
+    });
+
+    const headers = signAdminRequest(adminKeypair, 'GET', '/ngo-applications/stats');
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ngo-applications/stats',
+      headers,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.counts).toEqual({ PENDING: 2, APPROVED: 1, REJECTED: 1 });
+    expect(body.total).toBe(4);
+
+    await app.close();
+  });
+
+  it('returns zero counts when there are no applications', async () => {
+    const app = buildServer();
+
+    const headers = signAdminRequest(adminKeypair, 'GET', '/ngo-applications/stats');
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ngo-applications/stats',
+      headers,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.counts).toEqual({ PENDING: 0, APPROVED: 0, REJECTED: 0 });
+    expect(body.total).toBe(0);
+
+    await app.close();
+  });
+});
