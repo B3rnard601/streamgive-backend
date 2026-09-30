@@ -1,13 +1,15 @@
 import { xdr } from '@stellar/stellar-sdk';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../src/db.js';
 import { handleDonationVaultEvent } from '../../src/indexer/handlers/donationVault.js';
+import { logger } from '../../src/logger.js';
 import { fakeAddress, resetDb } from '../helpers/db.js';
 import { addressScVal, i128ScVal, makeEvent, symbolScVal, u64ScVal } from '../helpers/events.js';
 
 describe('handleDonationVaultEvent', () => {
   afterEach(async () => {
+    vi.restoreAllMocks();
     await resetDb();
   });
 
@@ -67,6 +69,35 @@ describe('handleDonationVaultEvent', () => {
     const stream = await prisma.stream.findUnique({ where: { onChainId: 2n } });
     expect(stream?.balance).toBe('500');
     expect(stream?.withdrawn).toBe('500');
+  });
+
+  it('clamps the balance to zero when accrued exceeds the recorded balance', async () => {
+    const warn = vi.spyOn(logger, 'warn');
+    const donorRow = await prisma.donor.create({ data: { address: fakeAddress('M') } });
+    const ngoRow = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('N'), name: 'NGO N' },
+    });
+    await prisma.stream.create({
+      data: {
+        onChainId: 5n,
+        donorId: donorRow.id,
+        ngoId: ngoRow.id,
+        tokenAddress: fakeAddress('O'),
+        rate: '10',
+        balance: '400',
+        withdrawn: '100',
+      },
+    });
+
+    await handleDonationVaultEvent(makeEvent([symbolScVal('withdraw'), u64ScVal(5n)], i128ScVal(500n)));
+
+    const stream = await prisma.stream.findUnique({ where: { onChainId: 5n } });
+    expect(stream?.balance).toBe('0');
+    expect(stream?.withdrawn).toBe('600');
+    expect(warn).toHaveBeenCalledWith(
+      { onChainId: '5', balance: '400', accrued: '500' },
+      'withdraw exceeds recorded stream balance',
+    );
   });
 
   it('applies a cancel event: settles accrued, zeroes balance/rate, marks cancelled', async () => {

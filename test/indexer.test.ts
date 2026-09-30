@@ -1,29 +1,58 @@
-import { startIndexer } from '../indexer';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-describe('Indexer Non-Overlapping Polls (#37)', () => {
-  it('does not run two polls concurrently when a poll takes longer than the interval', async () => {
+vi.mock('../src/indexer/checkpoint.js', () => ({
+  getCheckpoint: vi.fn(),
+  saveCheckpoint: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../src/stellar/rpc.js', () => ({
+  getLatestLedgerSequence: vi.fn(),
+  rpcServer: { getEvents: vi.fn() },
+}));
+vi.mock('../src/indexer/contracts.js', () => ({ WATCHED_CONTRACT_IDS: ['CONTRACT_A'] }));
+
+const checkpoint = await import('../src/indexer/checkpoint.js');
+const rpc = await import('../src/stellar/rpc.js');
+
+afterEach(() => {
+  delete process.env.INDEXER_POLL_INTERVAL_MS;
+});
+
+describe('indexer polling', () => {
+  it('does not overlap polls when an RPC request takes longer than the interval', async () => {
+    process.env.INDEXER_POLL_INTERVAL_MS = '10';
+    vi.resetModules();
+    vi.doMock('../src/indexer/checkpoint.js', () => ({
+      getCheckpoint: checkpoint.getCheckpoint,
+      saveCheckpoint: checkpoint.saveCheckpoint,
+    }));
+    vi.doMock('../src/stellar/rpc.js', () => ({
+      getLatestLedgerSequence: rpc.getLatestLedgerSequence,
+      rpcServer: rpc.rpcServer,
+    }));
+    vi.doMock('../src/indexer/contracts.js', () => ({ WATCHED_CONTRACT_IDS: ['CONTRACT_A'] }));
+
+    vi.mocked(checkpoint.getCheckpoint).mockResolvedValue(100);
+    let latestLedger = 100;
+    vi.mocked(rpc.getLatestLedgerSequence).mockImplementation(async () => ++latestLedger);
+
     let activePolls = 0;
-    let maxConcurrent = 0;
+    let maxConcurrentPolls = 0;
     let pollCount = 0;
-
-    const slowPoll = async () => {
+    vi.mocked(rpc.rpcServer.getEvents).mockImplementation(async () => {
       activePolls++;
-      maxConcurrent = Math.max(maxConcurrent, activePolls);
+      maxConcurrentPolls = Math.max(maxConcurrentPolls, activePolls);
       pollCount++;
-      // Simulate slow RPC call longer than interval
       await new Promise((resolve) => setTimeout(resolve, 50));
       activePolls--;
-    };
+      return { events: [] } as never;
+    });
 
-    // Start indexer with a 10ms interval
-    const stop = startIndexer(slowPoll, 10);
+    const { startIndexer } = await import('../src/indexer/worker.js');
+    const stop = startIndexer(async () => {});
+    await new Promise((resolve) => setTimeout(resolve, 140));
+    await stop();
 
-    // Wait long enough for multiple ticks to attempt firing
-    await new Promise((resolve) => setTimeout(resolve, 130));
-
-    stop();
-
-    expect(maxConcurrent).toBe(1);
+    expect(maxConcurrentPolls).toBe(1);
     expect(pollCount).toBeGreaterThan(1);
   });
 });

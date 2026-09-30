@@ -59,6 +59,7 @@ function runWorkerBriefly(startIndexer: (h: () => Promise<void>) => () => void):
 describe('worker bootstrap (no existing checkpoint)', () => {
   it('saves INDEXER_START_LEDGER as the initial checkpoint when set', async () => {
     process.env.INDEXER_START_LEDGER = '1000';
+    process.env.INDEXER_POLL_INTERVAL_MS = '5000';
     vi.mocked(checkpoint.getCheckpoint).mockResolvedValue(undefined);
     vi.mocked(rpc.getLatestLedgerSequence).mockResolvedValue(9999);
 
