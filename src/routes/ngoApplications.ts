@@ -2,7 +2,6 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { prisma } from '../db.js';
-import { Prisma } from '../generated/prisma/client.js';
 import { requireAdminSignature } from '../middleware/adminAuth.js';
 
 const applicationSchema = z.object({
@@ -111,12 +110,12 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
     async () => {
       const grouped = await prisma.ngoApplication.groupBy({
         by: ['status'],
-        _count: { _id: true },
+        _count: { _all: true },
       });
 
       const counts = { PENDING: 0, APPROVED: 0, REJECTED: 0 } as Record<string, number>;
       for (const row of grouped) {
-        counts[row.status] = row._count._id;
+        counts[row.status] = row._count._all;
       }
 
       const total = counts.PENDING + counts.APPROVED + counts.REJECTED;
