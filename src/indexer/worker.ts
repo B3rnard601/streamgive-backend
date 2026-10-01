@@ -247,7 +247,8 @@ export function startIndexer(handleEvent: EventHandler): () => Promise<void> {
   runPoll();
 
   return async (): Promise<void> => {
-    clearInterval(interval);
-    await Promise.all(inFlightPolls);
+    stopped = true;
+    clearTimeout(timer);
+    await inFlight;
   };
 }

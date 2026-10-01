@@ -47,24 +47,6 @@ app.listen({ port, host: '0.0.0.0' }).catch((err) => {
   process.exit(1);
 });
 
-// Left unwrapped so a handler failure propagates: worker.ts catches it
-// per-event, logs it and records the event in `indexer_dead_letters` before
-// moving the checkpoint past it, so one undecodable event can't block every
-// later one. A failure it can't even record (an unreachable database) still
-// propagates all the way out, leaving the checkpoint unmoved for a retry.
-const stopIndexer = startIndexer(dispatchEvent);
-
-async function shutdown(signal: NodeJS.Signals): Promise<void> {
-  app.log.info({ signal }, 'shutting down');
-  stopIndexer();
-  try {
-    await app.close();
-    process.exit(0);
-  } catch (err) {
-    app.log.error({ err }, 'error during shutdown');
-    process.exit(1);
-  }
-}
 
 // SIGTERM is what Docker/Kubernetes send on `docker stop`/pod termination;
 // SIGINT is Ctrl+C locally. Without this, both just kill the process

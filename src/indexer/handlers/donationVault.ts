@@ -49,7 +49,7 @@ async function handleStreamCreated(event: ContractEvent): Promise<void> {
     bigint,
   ];
 
-  const { donor, ngo } = await prisma.$transaction(async (tx) => {
+  const { ngo } = await prisma.$transaction(async (tx) => {
     const [donor, ngo] = await Promise.all([
       ensureDonor(tx, donorVal.toString()),
       ensureNgo(tx, ngoVal.toString()),
@@ -71,7 +71,6 @@ async function handleStreamCreated(event: ContractEvent): Promise<void> {
       update: {},
     });
 
-    return { donor, ngo };
     await tx.streamEvent.create({
       data: {
         type: 'created',
@@ -87,6 +86,8 @@ async function handleStreamCreated(event: ContractEvent): Promise<void> {
         },
       },
     });
+    
+    return { ngo };
   });
 
   await notify({
