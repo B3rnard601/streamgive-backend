@@ -34,7 +34,8 @@ async function ensureNgo(db: DonationDb, ownerAddress: string) {
  * Writes: upserts the `donor` and `ngo` rows (creating them if this is the
  * first time either address has been seen), then upserts a `stream` row
  * with status `ACTIVE`, the initial deposit as `balance`, and `withdrawn`
- * set to `0`. Emits a `stream_created` notification.
+ * set to `0`. Persists a `StreamEvent` row in the same transaction.
+ * Emits a `stream_created` notification.
  */
 async function handleStreamCreated(event: ContractEvent): Promise<void> {
   const [, streamIdVal] = event.topic;
@@ -71,10 +72,26 @@ async function handleStreamCreated(event: ContractEvent): Promise<void> {
     });
 
     return { donor, ngo };
+    await tx.streamEvent.create({
+      data: {
+        type: 'created',
+        streamId: onChainId,
+        ledger: event.ledger,
+        txHash: event.txHash,
+        payload: {
+          donor: donorVal.toString(),
+          ngo: ngoVal.toString(),
+          token: tokenVal.toString(),
+          deposit: depositVal.toString(),
+          rate: rateVal.toString(),
+        },
+      },
+    });
   });
 
   await notify({
     type: 'stream_created',
+    eventId: event.id,
     streamId: onChainId.toString(),
     donorAddress: donorVal.toString(),
     ngoId: ngo.id,
@@ -86,8 +103,9 @@ async function handleStreamCreated(event: ContractEvent): Promise<void> {
  * accrued funds are withdrawn to the NGO from an active stream.
  *
  * Writes: updates the matching `stream` row, subtracting the accrued
- * amount from `balance` and adding it to `withdrawn`. No-ops if the stream
- * isn't known yet. Emits a `stream_withdrawn` notification.
+ * amount from `balance` and adding it to `withdrawn`. Persists a
+ * `StreamEvent` row in the same transaction. No-ops if the stream isn't
+ * known yet. Emits a `stream_withdrawn` notification.
  *
  * Withdraw's event payload is just the accrued amount, so the new balance
  * and withdrawn total are fully determined by it — no ambiguity.
@@ -100,16 +118,30 @@ async function handleWithdraw(event: ContractEvent): Promise<void> {
   const stream = await prisma.stream.findUnique({ where: { onChainId } });
   if (!stream) return;
 
-  await prisma.stream.update({
-    where: { onChainId },
-    data: {
-      balance: (BigInt(stream.balance) - accrued).toString(),
-      withdrawn: (BigInt(stream.withdrawn) + accrued).toString(),
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.stream.update({
+      where: { onChainId },
+      data: {
+        balance: (BigInt(stream.balance) - accrued).toString(),
+        withdrawn: (BigInt(stream.withdrawn) + accrued).toString(),
+        updatedAt: new Date(event.ledgerClosedAt),
+      },
+    });
+
+    await tx.streamEvent.create({
+      data: {
+        type: 'withdraw',
+        streamId: onChainId,
+        ledger: event.ledger,
+        txHash: event.txHash,
+        payload: { accrued: accrued.toString() },
+      },
+    });
   });
 
   await notify({
     type: 'stream_withdrawn',
+    eventId: event.id,
     streamId: onChainId.toString(),
     amount: accrued.toString(),
   });
@@ -122,8 +154,9 @@ async function handleWithdraw(event: ContractEvent): Promise<void> {
  *
  * Writes: updates the matching `stream` row — adds the settled amount to
  * `withdrawn`, zeroes `balance` and `rate`, and sets `status` to
- * `CANCELLED`. No-ops if the stream isn't known yet. Emits a
- * `stream_cancelled` notification.
+ * `CANCELLED`. Persists a `StreamEvent` row in the same transaction.
+ * No-ops if the stream isn't known yet. Emits a `stream_cancelled`
+ * notification.
  *
  * Cancel's payload carries both the settled amount and the refund, so —
  * like withdraw — the resulting state is fully determined by the event.
@@ -136,18 +169,36 @@ async function handleCancel(event: ContractEvent): Promise<void> {
   const stream = await prisma.stream.findUnique({ where: { onChainId } });
   if (!stream) return;
 
-  await prisma.stream.update({
-    where: { onChainId },
-    data: {
-      withdrawn: (BigInt(stream.withdrawn) + accrued).toString(),
-      balance: '0',
-      rate: '0',
-      status: 'CANCELLED',
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.stream.update({
+      where: { onChainId },
+      data: {
+        withdrawn: (BigInt(stream.withdrawn) + accrued).toString(),
+        balance: '0',
+        lastRate: stream.rate,
+        rate: '0',
+        status: 'CANCELLED',
+        updatedAt: new Date(event.ledgerClosedAt),
+      },
+    });
+
+    await tx.streamEvent.create({
+      data: {
+        type: 'cancel',
+        streamId: onChainId,
+        ledger: event.ledger,
+        txHash: event.txHash,
+        payload: {
+          accrued: accrued.toString(),
+          refund: refund.toString(),
+        },
+      },
+    });
   });
 
   await notify({
     type: 'stream_cancelled',
+    eventId: event.id,
     streamId: onChainId.toString(),
     settledToNgo: accrued.toString(),
     refundToDonor: refund.toString(),
