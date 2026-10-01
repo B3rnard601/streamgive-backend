@@ -1,10 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-vi.mock('../src/db.js', () => ({
-  prisma: {
-    $queryRaw: vi.fn().mockResolvedValue([{}]),
-  },
-}));
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildServer, parseTrustProxy, type TrustProxySetting } from '../src/server.js';
 
@@ -108,14 +102,14 @@ describe('trustProxy and rate limiter keying behind proxy', () => {
     // Client A (203.0.113.1) sends 2 allowed requests
     const resA1 = await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': '203.0.113.1' },
     });
     expect(resA1.statusCode).toBe(200);
 
     const resA2 = await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': '203.0.113.1' },
     });
     expect(resA2.statusCode).toBe(200);
@@ -123,7 +117,7 @@ describe('trustProxy and rate limiter keying behind proxy', () => {
     // Client A sends a 3rd request -> throttled with 429
     const resA3 = await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': '203.0.113.1' },
     });
     expect(resA3.statusCode).toBe(429);
@@ -132,7 +126,7 @@ describe('trustProxy and rate limiter keying behind proxy', () => {
     // Because trustProxy keys by real client IP, Client B is NOT throttled
     const resB1 = await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': '198.51.100.2' },
     });
     expect(resB1.statusCode).toBe(200);
@@ -150,18 +144,18 @@ describe('trustProxy and rate limiter keying behind proxy', () => {
     // Exhaust client A's limit
     await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': clientA },
     });
     await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': clientA },
     });
 
     const throttledA = await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': clientA },
     });
     expect(throttledA.statusCode).toBe(429);
@@ -169,7 +163,7 @@ describe('trustProxy and rate limiter keying behind proxy', () => {
     // Client B should still succeed
     const okB = await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': clientB },
     });
     expect(okB.statusCode).toBe(200);
@@ -189,18 +183,18 @@ describe('trustProxy and rate limiter keying behind proxy', () => {
     // A hop count of 1 trusts the proxy and reads clientA as the real client IP.
     await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': `203.0.113.99, ${clientA}` },
     });
     await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': `203.0.113.99, ${clientA}` },
     });
 
     const throttledA = await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': `203.0.113.99, ${clientA}` },
     });
     expect(throttledA.statusCode).toBe(429);
@@ -208,7 +202,7 @@ describe('trustProxy and rate limiter keying behind proxy', () => {
     // Different client through the same proxy hop is not throttled
     const okB = await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': `203.0.113.99, ${clientB}` },
     });
     expect(okB.statusCode).toBe(200);
@@ -223,12 +217,12 @@ describe('trustProxy and rate limiter keying behind proxy', () => {
     // Client A sends 2 requests
     await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': '203.0.113.1' },
     });
     await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': '203.0.113.1' },
     });
 
@@ -237,7 +231,7 @@ describe('trustProxy and rate limiter keying behind proxy', () => {
     // so Client B gets unfairly throttled by Client A's requests!
     const sharedThrottled = await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': '198.51.100.2' },
     });
     expect(sharedThrottled.statusCode).toBe(429);
@@ -251,25 +245,25 @@ describe('trustProxy and rate limiter keying behind proxy', () => {
 
     await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': '203.0.113.50' },
     });
     await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': '203.0.113.50' },
     });
 
     const throttledA = await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': '203.0.113.50' },
     });
     expect(throttledA.statusCode).toBe(429);
 
     const okB = await app.inject({
       method: 'GET',
-      url: '/health',
+      url: '/indexer/status',
       headers: { 'x-forwarded-for': '203.0.113.51' },
     });
     expect(okB.statusCode).toBe(200);

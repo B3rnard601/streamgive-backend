@@ -1,9 +1,13 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../src/db.js';
 import { buildServer } from '../../src/server.js';
 
 describe('GET /health', () => {
+  beforeEach(() => {
+    vi.spyOn(prisma, '$queryRaw').mockResolvedValue([{}]);
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
