@@ -15,8 +15,17 @@ the test suite) and fill these in.
 | `ADMIN_ADDRESS`                 | No**     | — (empty)                                | Stellar public key (`G...`) that must sign requests to admin routes (`/ngo-applications` review). Admin routes 503 until this is set. Should match the `admin` configured on the deployed contracts. |
 | `NOTIFY_WEBHOOK_URL`            | No       | — (empty)                                | If set, stream lifecycle events (`stream_created`/`stream_withdrawn`/`stream_cancelled`) are POSTed here as JSON.                                |
 | `NOTIFY_WEBHOOK_SECRET`         | No       | — (empty)                                | If set, every webhook POST carries an `x-streamgive-signature` header holding the lower-case hex HMAC-SHA256 of the raw request body, keyed with this value, so receivers can reject forged notifications. The header is omitted entirely when this is unset. See the README's notification section for the verification recipe. |
+| `RATE_LIMIT_MAX`                | No       | `100`                                    | Global maximum number of requests allowed per time window across the API.                      |
+| `RATE_LIMIT_WINDOW`             | No       | `1 minute`                               | Global rate limit time window (e.g. `1 minute`, `10000` ms).                                    |
+| `RATE_LIMIT_APPLICATION_MAX`    | No       | `5`                                      | Maximum number of NGO application submissions allowed per time window.                         |
+| `RATE_LIMIT_APPLICATION_WINDOW`| No       | `1 minute`                               | Rate limit time window for NGO application submissions.                                         |
 | `LOG_LEVEL`                     | No       | `info`                                   | Pino log level: `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace`.                     |
 | `NODE_ENV`                      | No       | unset (treated as development)           | Set to `production` to switch logging to structured JSON instead of pino-pretty. Set automatically inside the Docker image. |
 
 \* Required for the indexer to do anything; the app runs fine without them, it just never sees on-chain events.
 \*\* Required for the admin review endpoints to work at all; everything else in the API works without it.
+
+
+| `RESEND_API_KEY` | No | — | Resend API key used to send email notifications. Email notifications remain in log-only stub mode when this is unset. |
+| `NOTIFY_EMAIL_FROM` | No | — | Sender address used by Resend. Required when `RESEND_API_KEY` is configured. |
+| `NOTIFY_EMAIL_TO` | No | — | Recipient address for notification emails. Email notifications are skipped when this is unset. |

@@ -1,8 +1,10 @@
 import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import Fastify from 'fastify';
 
 import { prisma } from './db.js';
+import { donorRoutes } from './routes/donors.js';
 import { impactRoutes } from './routes/impact.js';
 import { ngoApplicationRoutes } from './routes/ngoApplications.js';
 import { ngoRoutes } from './routes/ngos.js';
@@ -25,6 +27,27 @@ export function buildServer() {
     },
   });
 
+  app.setErrorHandler<Error & { statusCode?: number }>((error, request, reply) => {
+    request.log.error(error);
+    const statusCode =
+      error.statusCode && error.statusCode >= 400 && error.statusCode < 600
+        ? error.statusCode
+        : 500;
+    const errorString =
+      statusCode === 404
+        ? 'not_found'
+        : statusCode === 400
+          ? 'invalid_request'
+          : 'internal_server_error';
+    reply.code(statusCode).send({ error: errorString });
+  });
+
+  // Register helmet for security headers
+  app.register(helmet, {
+    contentSecurityPolicy: false, // Disabled for API-only server
+    global: true,
+  });
+
   // The browser app runs on a different origin to this API (a different
   // port in development, a different host in deployment), so every call
   // from it is cross-origin and fails as an opaque "Failed to fetch"
@@ -45,16 +68,23 @@ export function buildServer() {
   });
 
   app.register(rateLimit, {
-    max: 100,
-    timeWindow: '1 minute',
+    max: Number(process.env.RATE_LIMIT_MAX ?? 100),
+    timeWindow: process.env.RATE_LIMIT_WINDOW ?? '1 minute',
   });
 
-  app.get('/health', async () => {
-    await prisma.$queryRaw`SELECT 1`;
-    return { status: 'ok' };
-  });
+  app.get(
+    '/health',
+    // Health checks are also used by free-tier uptime pingers. They must not
+    // consume the shared client rate-limit bucket.
+    { config: { rateLimit: false } },
+    async () => {
+      await prisma.$queryRaw`SELECT 1`;
+      return { status: 'ok' };
+    },
+  );
 
   app.register(ngoRoutes);
+  app.register(donorRoutes);
   app.register(streamRoutes);
   app.register(impactRoutes);
   app.register(ngoApplicationRoutes);

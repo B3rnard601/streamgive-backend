@@ -10,6 +10,15 @@ serves the data that powers the frontend.
 - Fastify (API server)
 - PostgreSQL
 
+## NGO Verification Model
+
+An NGO's verified status consists of two distinct steps kept deliberately separate:
+
+1. **Off-Chain Application Review (`NgoApplication.status`)**: An NGO submits an off-chain application containing organization details and verification documents. Admins review and update the application status (e.g., `APPROVED` or `REJECTED`) within the database.
+2. **On-Chain Contract Approval (`Ngo.verified`)**: Once an application is reviewed off-chain, an admin executes an on-chain transaction (`approve_ngo`) to grant the NGO verified status on the Stellar smart contract. The indexer listens for on-chain events (`ngo_approved` / `ngo_revoked`) and updates the `Ngo.verified` field accordingly.
+
+Keeping off-chain application review separate from on-chain contract approval ensures that sensitive organizational details and review metadata remain off-chain, while the Stellar ledger remains the single source of truth for execution permissions and verified status.
+
 ## Local development
 
 ```
@@ -213,3 +222,14 @@ Early development.
 ## License
 
 Apache-2.0 — see [LICENSE](./LICENSE).
+
+
+## Local development
+
+```bash
+cp .env.example .env
+docker compose up -d postgres   # starts Postgres (+ a streamgive_test DB)
+npm install
+npm run db:migrate              # apply Prisma migrations to streamgive
+npm run db:seed                 # optional: load sample NGOs, donors and streams
+npm run dev
