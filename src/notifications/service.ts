@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
 
+import { prisma } from '../db.js';
 import type { NotificationEvent } from './types.js';
 
 const deliveredEventIds = new Set<string>();
@@ -40,19 +41,32 @@ async function notifyWebhook(event: NotificationEvent): Promise<void> {
     headers[SIGNATURE_HEADER] = createHmac('sha256', secret).update(body).digest('hex');
   }
 
+  let success = false;
+  let error: string | undefined;
+
   try {
-    const response = await fetch(webhookUrl, {
+    const res = await fetch(webhookUrl, {
       method: 'POST',
       headers,
       body,
     });
 
-    if (!response.ok) {
-      console.error(`webhook notification failed with status ${response.status} for ${webhookUrl}`);
+    if (res.ok) {
+      success = true;
+    } else {
+      error = `status ${res.status}`;
+      console.error(
+        `webhook notification failed with status ${res.status} for ${webhookUrl}`,
+      );
     }
   } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
     console.error('webhook notification failed', err);
   }
+
+  await prisma.notificationLog.create({
+    data: { eventType: event.type, channel: 'webhook', success, error },
+  });
 }
 
 /** Stub: no email provider wired up yet — picking one (SendGrid, Postmark,
@@ -61,6 +75,10 @@ async function notifyWebhook(event: NotificationEvent): Promise<void> {
  * sites. */
 async function notifyEmail(event: NotificationEvent): Promise<void> {
   console.log('[notify:email:stub]', event);
+
+  await prisma.notificationLog.create({
+    data: { eventType: event.type, channel: 'email', success: true },
+  });
 }
 
 export async function notify(event: NotificationEvent): Promise<void> {
