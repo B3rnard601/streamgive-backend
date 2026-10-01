@@ -72,16 +72,14 @@ export function buildServer() {
     timeWindow: process.env.RATE_LIMIT_WINDOW ?? '1 minute',
   });
 
-  app.get(
-    '/health',
-    // Health checks are also used by free-tier uptime pingers. They must not
-    // consume the shared client rate-limit bucket.
-    { config: { rateLimit: false } },
-    async () => {
+  app.get('/health', async (_request, reply) => {
+    try {
       await prisma.$queryRaw`SELECT 1`;
       return { status: 'ok' };
-    },
-  );
+    } catch {
+      return reply.code(503).send({ status: 'error', database: 'unreachable' });
+    }
+  });
 
   app.register(ngoRoutes);
   app.register(donorRoutes);
