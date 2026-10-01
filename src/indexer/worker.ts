@@ -1,6 +1,7 @@
 import { getLatestLedgerSequence, rpcServer } from '../stellar/rpc.js';
 import { getCheckpoint, saveCheckpoint } from './checkpoint.js';
 import { WATCHED_CONTRACT_IDS } from './contracts.js';
+import { recordDeadLetter } from './deadLetter.js';
 
 const POLL_INTERVAL_MS = Number(process.env.INDEXER_POLL_INTERVAL_MS ?? 5000);
 const START_LEDGER = process.env.INDEXER_START_LEDGER
@@ -31,7 +32,13 @@ function isLedgerOutOfRange(err: unknown): boolean {
   );
 }
 
-async function pollOnce(handleEvent: EventHandler): Promise<void> {
+/**
+ * Fetches and processes one batch of events, moving the checkpoint forward.
+ *
+ * Exported for the tests; the running indexer drives this from
+ * {@link startIndexer} rather than calling it directly.
+ */
+export async function pollOnce(handleEvent: EventHandler): Promise<void> {
   if (WATCHED_CONTRACT_IDS.length === 0) {
     return;
   }
@@ -104,7 +111,27 @@ async function pollOnce(handleEvent: EventHandler): Promise<void> {
   }
 
   for (const event of events) {
-    await handleEvent(event);
+    try {
+      await handleEvent(event);
+    } catch (err: unknown) {
+      // A handler that throws used to pin the checkpoint: the same event
+      // came back on every poll and nothing after it was ever indexed. The
+      // handlers decode event payloads with unchecked casts, so any event
+      // whose shape doesn't match is permanently poisonous — retrying it
+      // will never succeed, it just stops the indexer making progress.
+      // Record it and carry on instead.
+      //
+      // recordDeadLetter() is deliberately left unguarded. If it throws,
+      // the database is unreachable rather than the event being bad, and
+      // letting that propagate leaves the checkpoint unmoved so the event
+      // is retried on the next poll instead of skipped over a blip.
+      console.error(
+        `indexer: event ${event.id} at ledger ${event.ledger} could not be` +
+          ` processed — recording it as a dead letter and skipping it`,
+        err,
+      );
+      await recordDeadLetter(event, err);
+    }
 
     // Saved per-event, not once per batch: several handlers apply relative
     // deltas (balance -= accrued, etc.), so replaying an already-applied

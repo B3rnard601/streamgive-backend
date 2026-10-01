@@ -10,6 +10,7 @@ export async function resetDb(): Promise<void> {
   await prisma.ngo.deleteMany();
   await prisma.ngoApplication.deleteMany();
   await prisma.indexerCheckpoint.deleteMany();
+  await prisma.indexerDeadLetter.deleteMany();
 }
 
 /**
