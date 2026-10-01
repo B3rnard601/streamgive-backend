@@ -27,7 +27,7 @@ export function buildServer() {
     },
   });
 
-  app.setErrorHandler((error: unknown, request, reply) => {
+  app.setErrorHandler<Error & { statusCode?: number }>((error, request, reply) => {
     request.log.error(error);
     const err = error as { statusCode?: number };
     const statusCode =

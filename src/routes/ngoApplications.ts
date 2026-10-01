@@ -2,14 +2,19 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { prisma } from '../db.js';
-import { Prisma } from '../generated/prisma/client.js';
 import { requireAdminSignature } from '../middleware/adminAuth.js';
 
 const applicationSchema = z.object({
   ownerAddress: z.string().regex(/^G[A-Z2-7]{55}$/),
   name: z.string().min(1).max(200),
   description: z.string().min(1).max(5000),
-  website: z.string().url().optional(),
+  // Normalize scheme-less domains (e.g. "example.org") to "https://example.org"
+  // before URL validation so applicants who omit the scheme aren't blocked.
+  website: z
+    .string()
+    .transform((val) => (val && !/^https?:\/\//i.test(val) ? `https://${val}` : val))
+    .pipe(z.string().url())
+    .optional(),
   contactEmail: z.string().email(),
   country: z.string().max(100).optional(),
 });
@@ -105,12 +110,12 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
     async () => {
       const grouped = await prisma.ngoApplication.groupBy({
         by: ['status'],
-        _count: { _id: true },
+        _count: { _all: true },
       });
 
       const counts = { PENDING: 0, APPROVED: 0, REJECTED: 0 } as Record<string, number>;
       for (const row of grouped) {
-        counts[row.status] = row._count._id;
+        counts[row.status] = row._count._all;
       }
 
       const total = counts.PENDING + counts.APPROVED + counts.REJECTED;
@@ -175,17 +180,18 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
         return reply.code(400).send({ error: 'invalid_request', details: parsed.error.flatten() });
       }
 
-      try {
-        return await prisma.ngoApplication.update({
-          where: { id },
-          data: { status: 'APPROVED', reviewNote: parsed.data.reviewNote },
-        });
-      } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
-          return reply.code(404).send({ error: 'not_found' });
-        }
-        throw err;
+      const application = await prisma.ngoApplication.findUnique({ where: { id } });
+      if (!application) {
+        return reply.code(404).send({ error: 'not_found' });
       }
+      if (application.status !== 'PENDING') {
+        return reply.code(409).send({ error: 'already_reviewed' });
+      }
+
+      return await prisma.ngoApplication.update({
+        where: { id },
+        data: { status: 'APPROVED', reviewNote: parsed.data.reviewNote },
+      });
     },
   );
 
@@ -204,17 +210,18 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
         return reply.code(400).send({ error: 'invalid_request', details: parsed.error.flatten() });
       }
 
-      try {
-        return await prisma.ngoApplication.update({
-          where: { id },
-          data: { status: 'REJECTED', reviewNote: parsed.data.reviewNote },
-        });
-      } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
-          return reply.code(404).send({ error: 'not_found' });
-        }
-        throw err;
+      const application = await prisma.ngoApplication.findUnique({ where: { id } });
+      if (!application) {
+        return reply.code(404).send({ error: 'not_found' });
       }
+      if (application.status !== 'PENDING') {
+        return reply.code(409).send({ error: 'already_reviewed' });
+      }
+
+      return await prisma.ngoApplication.update({
+        where: { id },
+        data: { status: 'REJECTED', reviewNote: parsed.data.reviewNote },
+      });
     },
   );
 }

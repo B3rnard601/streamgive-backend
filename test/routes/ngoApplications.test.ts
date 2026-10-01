@@ -56,6 +56,36 @@ describe('POST /ngo-applications', () => {
     await app.close();
   });
 
+  it('accepts a scheme-less website domain and normalizes it to https://', async () => {
+    const app = buildServer();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/ngo-applications',
+      payload: validApplicationPayload({ website: 'example.org' }),
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().website).toBe('https://example.org');
+
+    await app.close();
+  });
+
+  it('accepts an already-schemed https website without double-prepending', async () => {
+    const app = buildServer();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/ngo-applications',
+      payload: validApplicationPayload({ website: 'https://example.org' }),
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().website).toBe('https://example.org');
+
+    await app.close();
+  });
+
   it('rejects a malformed ownerAddress with 400', async () => {
     const app = buildServer();
 

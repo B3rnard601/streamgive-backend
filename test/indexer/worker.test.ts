@@ -102,12 +102,16 @@ describe('worker bootstrap (no existing checkpoint)', () => {
   it('saves INDEXER_START_LEDGER as the initial checkpoint when set', async () => {
     process.env.INDEXER_START_LEDGER = '1000';
     vi.mocked(checkpoint.getCheckpoint).mockResolvedValue(undefined);
-    vi.mocked(rpc.getLatestLedgerSequence).mockResolvedValue(9999);
+    // latestLedger <= START_LEDGER so subsequent polls hit the "nothing new"
+    // guard and return without calling saveCheckpoint again.
+    vi.mocked(rpc.getLatestLedgerSequence).mockResolvedValue(1000);
 
     const { startIndexer } = await freshWorker();
     await runWorkerUntilFirstSave(startIndexer);
 
     expect(checkpoint.saveCheckpoint).toHaveBeenCalledWith(1000);
+    // Must not fall back to the RPC latest ledger as the starting point.
+    expect(checkpoint.saveCheckpoint).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to the latest ledger and processes no historical events when INDEXER_START_LEDGER is not set', async () => {

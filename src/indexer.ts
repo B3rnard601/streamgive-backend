@@ -41,39 +41,3 @@ export function startIndexer(pollOnce: () => Promise<void>, intervalMs: number) 
   };
 }
 
-export interface GetEventsPage {
-  events: Array<{ id: string }>;
-  nextCursor?: string;
-}
-
-export async function pollOnce(
-  rpcClient: { getEvents: (args: { cursor?: string; limit: number }) => Promise<GetEventsPage> },
-  processEvent: (event: { id: string }) => Promise<void>,
-) {
-  // No stored cursor yet: start from the beginning of the event stream.
-  let currentCursor: string | undefined;
-  const PAGE_LIMIT = 100; // Adjust according to your RPC client configuration
-  let hasMore = true;
-
-  while (hasMore) {
-    const response = await rpcClient.getEvents({
-      cursor: currentCursor,
-      limit: PAGE_LIMIT,
-    });
-
-    const events = response.events || [];
-
-    // Process each event in the current page sequentially
-    for (const event of events) {
-      await processEvent(event);
-      currentCursor = event.id; // Update cursor to latest processed event
-    }
-
-    // If the page size is less than the limit, or no next cursor is provided, we've reached the end
-    if (events.length < PAGE_LIMIT || !response.nextCursor) {
-      hasMore = false;
-    } else {
-      currentCursor = response.nextCursor;
-    }
-  }
-}
