@@ -1,10 +1,14 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { prisma } from '../../src/db.js';
 import { buildServer } from '../../src/server.js';
 import { fakeAddress, resetDb } from '../helpers/db.js';
 
 describe('GET /impact', () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
   afterEach(async () => {
     await resetDb();
   });

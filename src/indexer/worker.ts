@@ -248,12 +248,7 @@ export function startIndexer(handleEvent: EventHandler): () => Promise<void> {
 
   return async (): Promise<void> => {
     stopped = true;
-
-    if (timer !== undefined) {
-      clearTimeout(timer);
-      timer = undefined;
-    }
-
+    clearTimeout(timer);
     await inFlight;
   };
 }
