@@ -150,11 +150,14 @@ export function startIndexer(handleEvent: EventHandler): () => Promise<void> {
         }
       });
     inFlightPolls.add(pollPromise);
-    void pollPromise.finally(() => inFlightPolls.delete(pollPromise));
+    pollPromise.finally(() => {
+      inFlightPolls.delete(pollPromise);
+    });
   };
 
   runPoll();
   const interval = setInterval(runPoll, POLL_INTERVAL_MS);
+
   return async () => {
     clearInterval(interval);
     await Promise.all(inFlightPolls);
