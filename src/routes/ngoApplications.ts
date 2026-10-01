@@ -1,8 +1,8 @@
-import { Prisma } from '../generated/prisma/client.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { prisma } from '../db.js';
+import { Prisma } from '../generated/prisma/client.js';
 import { requireAdminSignature } from '../middleware/adminAuth.js';
 
 const applicationSchema = z.object({
@@ -37,8 +37,7 @@ const reviewBodySchema = z.object({
 export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> {
   app.post(
     '/ngo-applications',
-    // Public write endpoint — tighter than the global default since it's
-    // the most spam-prone route in the API.
+    // Public write endpoint — tighter than the global default since it's // the most spam-prone route in the API.
     {
       config: {
         rateLimit: {
@@ -95,6 +94,30 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
 
     return application;
   });
+
+  // Admin dashboard endpoint: returns application counts grouped by
+  // status so the client doesn't have to fetch and count applications
+  // itself. Must be registered before the /:id route so 'stats' isn't
+  // swallowed as an id and rejected by the UUID param validation.
+  app.get(
+    '/ngo-applications/stats',
+    { preHandler: requireAdminSignature },
+    async () => {
+      const grouped = await prisma.ngoApplication.groupBy({
+        by: ['status'],
+        _count: { _id: true },
+      });
+
+      const counts = { PENDING: 0, APPROVED: 0, REJECTED: 0 } as Record<string, number>;
+      for (const row of grouped) {
+        counts[row.status] = row._count._id;
+      }
+
+      const total = counts.PENDING + counts.APPROVED + counts.REJECTED;
+
+      return { counts: { PENDING: counts.PENDING, APPROVED: counts.APPROVED, REJECTED: counts.REJECTED }, total };
+    },
+  );
 
   app.get('/ngo-applications', { preHandler: requireAdminSignature }, async (request, reply) => {
     const parsed = listQuerySchema.safeParse(request.query);

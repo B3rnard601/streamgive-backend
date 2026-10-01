@@ -1,8 +1,10 @@
 import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import Fastify from 'fastify';
 
 import { prisma } from './db.js';
+import { donorRoutes } from './routes/donors.js';
 import { impactRoutes } from './routes/impact.js';
 import { ngoApplicationRoutes } from './routes/ngoApplications.js';
 import { ngoRoutes } from './routes/ngos.js';
@@ -37,6 +39,12 @@ export function buildServer() {
           ? 'invalid_request'
           : 'internal_server_error';
     reply.code(statusCode).send({ error: errorString });
+  });
+
+  // Register helmet for security headers
+  app.register(helmet, {
+    contentSecurityPolicy: false, // Disabled for API-only server
+    global: true,
   });
 
   // The browser app runs on a different origin to this API (a different
@@ -75,6 +83,7 @@ export function buildServer() {
   );
 
   app.register(ngoRoutes);
+  app.register(donorRoutes);
   app.register(streamRoutes);
   app.register(impactRoutes);
   app.register(ngoApplicationRoutes);
