@@ -8,6 +8,12 @@ const START_LEDGER = process.env.INDEXER_START_LEDGER
   ? Number(process.env.INDEXER_START_LEDGER)
   : undefined;
 
+/** Ceiling on the backed-off delay. Reached after ~7 consecutive failures at
+ *  the default 5s interval, so a long outage still re-checks the endpoint
+ *  every 5 minutes instead of drifting out to a delay that would look like a
+ *  hung indexer — and so recovery is always detected within the cap. */
+const BACKOFF_MAX_MS = 5 * 60_000;
+
 type GetEventsResult = Awaited<ReturnType<typeof rpcServer.getEvents>>;
 export type ContractEvent = GetEventsResult['events'][number];
 export type EventHandler = (event: ContractEvent) => Promise<void>;
@@ -29,6 +35,32 @@ function isLedgerOutOfRange(err: unknown): boolean {
     'message' in err &&
     typeof (err as { message: unknown }).message === 'string' &&
     (err as { message: string }).message.includes('startLedger must be within the ledger range')
+  );
+}
+
+/**
+ * How long to wait before the poll that follows `consecutiveFailures`
+ * consecutive poll failures.
+ *
+ * Zero failures — the normal case — is just the poll interval. The first
+ * failure also retries at the poll interval, so a single dropped request
+ * costs nothing; from there the delay doubles per failure up to
+ * BACKOFF_MAX_MS. Doubling is what keeps an RPC outage from being a
+ * constant-rate hammer: 5s, 5s, 10s, 20s, 40s, 80s, 160s, 300s, 300s, ...
+ *
+ * Exported for the unit test; the caller resets the counter on success.
+ */
+export function backoffDelayMs(consecutiveFailures: number): number {
+  if (consecutiveFailures <= 0) {
+    return POLL_INTERVAL_MS;
+  }
+
+  // 2 ** n saturates to Infinity long before it overflows, and
+  // Math.min(Infinity, BACKOFF_MAX_MS) is the cap, so a long outage can
+  // never produce a NaN or a nonsensical delay here.
+  return Math.min(
+    POLL_INTERVAL_MS * 2 ** (consecutiveFailures - 1),
+    BACKOFF_MAX_MS,
   );
 }
 
@@ -145,8 +177,8 @@ export async function pollOnce(handleEvent: EventHandler): Promise<void> {
 /**
  * Starts polling for contract events.
  *
- * The returned stop function clears the polling interval and waits for all
- * polls that were already running to finish before resolving.
+ * The returned stop function cancels the pending poll and waits for a poll
+ * that is already running to finish before resolving.
  */
 export function startIndexer(handleEvent: EventHandler): () => Promise<void> {
   if (WATCHED_CONTRACT_IDS.length === 0) {
@@ -158,35 +190,70 @@ export function startIndexer(handleEvent: EventHandler): () => Promise<void> {
     );
   }
 
-  const inFlightPolls = new Set<Promise<void>>();
+  // Each poll schedules the next one only after it settles, rather than
+  // firing on a fixed setInterval. Two things fall out of that: polls can
+  // never overlap however slow an RPC is, and a failing poll controls how
+  // long until the next attempt instead of the interval timer overriding it.
+  let timer: NodeJS.Timeout | undefined;
+  let inFlight: Promise<void> | undefined;
+  let consecutiveFailures = 0;
+  let stopped = false;
 
-  const runPoll = (): void => {
-    const pollPromise = pollOnce(handleEvent)
-      .then(() => {
+  function scheduleNextPoll(): void {
+    if (stopped) {
+      return;
+    }
+
+    const delay = backoffDelayMs(consecutiveFailures);
+
+    timer = setTimeout(() => {
+      runPoll();
+    }, delay);
+  }
+
+  function runPoll(): void {
+    if (stopped) {
+      return;
+    }
+
+    inFlight = (async () => {
+      try {
+        await pollOnce(handleEvent);
+        consecutiveFailures = 0;
         consecutivePollFailures = 0;
-      })
-      .catch((err: unknown) => {
+      } catch (err: unknown) {
+        consecutiveFailures += 1;
         consecutivePollFailures += 1;
+
         if (consecutivePollFailures >= INDEXER_FAILURE_ESCALATION_THRESHOLD) {
           console.error('indexer poll failure threshold exceeded', {
             consecutiveFailures: consecutivePollFailures,
             error: err,
           });
         } else {
-          console.error('indexer poll failed', err);
+          console.error(
+            `indexer poll failed (${consecutiveFailures} in a row) — ` +
+              `retrying in ${backoffDelayMs(consecutiveFailures)}ms`,
+            err,
+          );
         }
-      });
-    inFlightPolls.add(pollPromise);
-    pollPromise.finally(() => {
-      inFlightPolls.delete(pollPromise);
-    });
-  };
+      } finally {
+        inFlight = undefined;
+        scheduleNextPoll();
+      }
+    })();
+  }
 
   runPoll();
-  const interval = setInterval(runPoll, POLL_INTERVAL_MS);
 
   return async (): Promise<void> => {
-    clearInterval(interval);
-    await Promise.all(inFlightPolls);
+    stopped = true;
+
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+
+    await inFlight;
   };
 }
