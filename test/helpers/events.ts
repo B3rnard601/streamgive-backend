@@ -36,7 +36,7 @@ export function addressScVal(address: string): xdr.ScVal {
 export function makeEvent(
   topic: xdr.ScVal[],
   value: xdr.ScVal,
-  options?: { ledgerClosedAt?: string; id?: string; ledger?: number },
+  options?: { ledgerClosedAt?: string; id?: string; ledger?: number; txHash?: string },
 ): ContractEvent {
   const ledger = options?.ledger ?? 100;
 
@@ -46,6 +46,7 @@ export function makeEvent(
     ledger,
     ledgerClosedAt: options?.ledgerClosedAt ?? new Date().toISOString(),
     contractId: 'CTESTCONTRACTID',
+    txHash: options?.txHash ?? 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
     topic,
     value,
     inSuccessfulContractCall: true,
