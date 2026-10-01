@@ -1,4 +1,3 @@
-
 import { getLatestLedgerSequence, rpcServer } from '../stellar/rpc.js';
 import { getCheckpoint, saveCheckpoint } from './checkpoint.js';
 import { WATCHED_CONTRACT_IDS } from './contracts.js';
@@ -16,6 +15,8 @@ export type EventHandler = (event: ContractEvent) => Promise<void>;
 // the DB just to read the starting point; the source of truth is always
 // the `indexer_checkpoints` row, written after every processed event.
 let lastProcessedLedger: number | undefined;
+export const INDEXER_FAILURE_ESCALATION_THRESHOLD = 5;
+let consecutivePollFailures = 0;
 
 /** The RPC rejects an out-of-window startLedger with JSON-RPC -32600 and a
  *  message naming the range it does serve. There is no dedicated error code
@@ -26,9 +27,7 @@ function isLedgerOutOfRange(err: unknown): boolean {
     err !== null &&
     'message' in err &&
     typeof (err as { message: unknown }).message === 'string' &&
-    (err as { message: string }).message.includes(
-      'startLedger must be within the ledger range',
-    )
+    (err as { message: string }).message.includes('startLedger must be within the ledger range')
   );
 }
 
@@ -135,9 +134,21 @@ export function startIndexer(handleEvent: EventHandler): () => Promise<void> {
   const inFlightPolls = new Set<Promise<void>>();
 
   const runPoll = (): void => {
-    const pollPromise = pollOnce(handleEvent).catch((err: unknown) => {
-      console.error('indexer poll failed', err);
-    });
+    const pollPromise = pollOnce(handleEvent)
+      .then(() => {
+        consecutivePollFailures = 0;
+      })
+      .catch((err: unknown) => {
+        consecutivePollFailures += 1;
+        if (consecutivePollFailures >= INDEXER_FAILURE_ESCALATION_THRESHOLD) {
+          console.error('indexer poll failure threshold exceeded', {
+            consecutiveFailures: consecutivePollFailures,
+            error: err,
+          });
+        } else {
+          console.error('indexer poll failed', err);
+        }
+      });
     inFlightPolls.add(pollPromise);
     pollPromise.finally(() => {
       inFlightPolls.delete(pollPromise);
