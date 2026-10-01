@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildServer } from '../src/server.js';
+import { buildServer } from '../../src/server.js';
 
 describe('GET /indexer/status (#59)', () => {
   it('returns configured: false when no contract IDs are set', async () => {

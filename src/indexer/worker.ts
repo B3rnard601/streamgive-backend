@@ -1,3 +1,4 @@
+
 import { getLatestLedgerSequence, rpcServer } from '../stellar/rpc.js';
 import { getCheckpoint, saveCheckpoint } from './checkpoint.js';
 import { WATCHED_CONTRACT_IDS } from './contracts.js';
@@ -137,14 +138,13 @@ export function startIndexer(handleEvent: EventHandler): () => Promise<void> {
     const pollPromise = pollOnce(handleEvent).catch((err: unknown) => {
       console.error('indexer poll failed', err);
     });
-
     inFlightPolls.add(pollPromise);
-
-    void pollPromise.then(() => {
+    pollPromise.finally(() => {
       inFlightPolls.delete(pollPromise);
     });
   };
 
+  runPoll();
   const interval = setInterval(runPoll, POLL_INTERVAL_MS);
 
   return async (): Promise<void> => {

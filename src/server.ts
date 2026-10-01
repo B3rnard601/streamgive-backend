@@ -1,8 +1,10 @@
 import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import Fastify from 'fastify';
 
 import { prisma } from './db.js';
+import { donorRoutes } from './routes/donors.js';
 import { impactRoutes } from './routes/impact.js';
 import { indexerStatusRoutes } from './routes/indexerStatus.js';
 import { ngoApplicationRoutes } from './routes/ngoApplications.js';
@@ -90,42 +92,68 @@ export function buildServer(options?: BuildServerOptions) {
     trustProxy: trustProxySetting,
   });
 
-  app.register(async (api) => {
-    // The browser app runs on a different origin to this API (a different
-    // port in development, a different host in deployment), so every call
-    // from it is cross-origin and fails as an opaque "Failed to fetch"
-    // without these headers.
-    //
-    // Allowed origins are an explicit list, not a wildcard: the admin routes
-    // authenticate with a signature the browser sends as a header, so any
-    // origin allowed here can ask a signed-in admin's browser to call them.
-    const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3001')
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter((origin) => origin.length > 0);
+  app.setErrorHandler<Error & { statusCode?: number }>((error, request, reply) => {
+    request.log.error(error);
+    const statusCode =
+      error.statusCode && error.statusCode >= 400 && error.statusCode < 600
+        ? error.statusCode
+        : 500;
+    const errorString =
+      statusCode === 404
+        ? 'not_found'
+        : statusCode === 400
+          ? 'invalid_request'
+          : 'internal_server_error';
+    reply.code(statusCode).send({ error: errorString });
+  });
 
-    await api.register(cors, {
-      origin: allowedOrigins,
-      methods: ['GET', 'POST', 'OPTIONS'],
-      allowedHeaders: ['content-type', 'x-admin-address', 'x-admin-signature', 'x-admin-timestamp'],
-    });
+  // Register helmet for security headers
+  app.register(helmet, {
+    contentSecurityPolicy: false, // Disabled for API-only server
+    global: true,
+  });
 
-    await api.register(rateLimit, {
-      max: Number(process.env.RATE_LIMIT_MAX ?? 100),
-      timeWindow: process.env.RATE_LIMIT_WINDOW ?? '1 minute',
-    });
+  // The browser app runs on a different origin to this API (a different
+  // port in development, a different host in deployment), so every call
+  // from it is cross-origin and fails as an opaque "Failed to fetch"
+  // without these headers.
+  //
+  // Allowed origins are an explicit list, not a wildcard: the admin routes
+  // authenticate with a signature the browser sends as a header, so any
+  // origin allowed here can ask a signed-in admin's browser to call them.
+  const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3001')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
 
-    api.get('/health', async () => {
+  app.register(cors, {
+    origin: allowedOrigins,
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['content-type', 'x-admin-address', 'x-admin-signature', 'x-admin-timestamp'],
+  });
+
+  app.register(rateLimit, {
+    max: Number(process.env.RATE_LIMIT_MAX ?? 100),
+    timeWindow: process.env.RATE_LIMIT_WINDOW ?? '1 minute',
+  });
+
+  app.get(
+    '/health',
+    // Health checks are also used by free-tier uptime pingers. They must not
+    // consume the shared client rate-limit bucket.
+    { config: { rateLimit: false } },
+    async () => {
       await prisma.$queryRaw`SELECT 1`;
       return { status: 'ok' };
-    });
+    },
+  );
 
-    api.register(ngoRoutes);
-    api.register(streamRoutes);
-    api.register(impactRoutes);
-    api.register(ngoApplicationRoutes);
-    api.register(indexerStatusRoutes);
-  });
+  app.register(ngoRoutes);
+  app.register(donorRoutes);
+  app.register(streamRoutes);
+  app.register(impactRoutes);
+  app.register(ngoApplicationRoutes);
+  app.register(indexerStatusRoutes);
 
   return app;
 }
