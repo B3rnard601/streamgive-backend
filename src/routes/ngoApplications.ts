@@ -184,6 +184,14 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
       if (!application) {
         return reply.code(404).send({ error: 'not_found' });
       }
+      if (application.status !== 'PENDING') {
+        return reply.code(409).send({ error: 'already_reviewed' });
+      }
+
+      return await prisma.ngoApplication.update({
+        where: { id },
+        data: { status: 'APPROVED', reviewNote: parsed.data.reviewNote },
+      });
     },
   );
 
@@ -206,6 +214,14 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
       if (!application) {
         return reply.code(404).send({ error: 'not_found' });
       }
+      if (application.status !== 'PENDING') {
+        return reply.code(409).send({ error: 'already_reviewed' });
+      }
+
+      return await prisma.ngoApplication.update({
+        where: { id },
+        data: { status: 'REJECTED', reviewNote: parsed.data.reviewNote },
+      });
     },
   );
 }
