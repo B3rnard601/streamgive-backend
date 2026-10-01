@@ -4,16 +4,18 @@ import { prisma } from '../../db.js';
 import { notify } from '../../notifications/service.js';
 import type { ContractEvent } from '../worker.js';
 
-async function ensureDonor(address: string) {
-  return prisma.donor.upsert({
+type DonationDb = Pick<typeof prisma, 'donor' | 'ngo' | 'stream'>;
+
+async function ensureDonor(db: DonationDb, address: string) {
+  return db.donor.upsert({
     where: { address },
     create: { address },
     update: {},
   });
 }
 
-async function ensureNgo(ownerAddress: string) {
-  return prisma.ngo.upsert({
+async function ensureNgo(db: DonationDb, ownerAddress: string) {
+  return db.ngo.upsert({
     where: { ownerAddress },
     // A stream can reference an NGO address that hasn't gone through
     // ngo-registry — donation-vault doesn't check registry membership
@@ -47,12 +49,12 @@ async function handleStreamCreated(event: ContractEvent): Promise<void> {
     bigint,
   ];
 
-  const [donor, ngo] = await Promise.all([
-    ensureDonor(donorVal.toString()),
-    ensureNgo(ngoVal.toString()),
-  ]);
+  const { donor, ngo } = await prisma.$transaction(async (tx) => {
+    const [donor, ngo] = await Promise.all([
+      ensureDonor(tx, donorVal.toString()),
+      ensureNgo(tx, ngoVal.toString()),
+    ]);
 
-  await prisma.$transaction(async (tx) => {
     await tx.stream.upsert({
       where: { onChainId },
       create: {
@@ -69,6 +71,7 @@ async function handleStreamCreated(event: ContractEvent): Promise<void> {
       update: {},
     });
 
+    return { donor, ngo };
     await tx.streamEvent.create({
       data: {
         type: 'created',
