@@ -1,4 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../src/db.js', () => ({
+  prisma: {
+    $queryRaw: vi.fn().mockResolvedValue([{}]),
+  },
+}));
 
 import { buildServer, parseTrustProxy, type TrustProxySetting } from '../src/server.js';
 
