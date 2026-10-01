@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import Fastify from 'fastify';
 import { gunzipSync } from 'node:zlib';
-import { registerCompression } from '../src/plugins/compression.js';
+import { registerCompression } from '../src/Plugins/compression.js';
 
 async function build() {
   const app = Fastify();
