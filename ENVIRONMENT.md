@@ -14,6 +14,10 @@ the test suite) and fill these in.
 | `CORS_ORIGINS`                  | No       | `http://localhost:3001`                  | Comma-separated origins allowed to call this API from a browser.                                |
 | `ADMIN_ADDRESS`                 | No**     | — (empty)                                | Stellar public key (`G...`) that must sign requests to admin routes (`/ngo-applications` review). Admin routes 503 until this is set. Should match the `admin` configured on the deployed contracts. |
 | `NOTIFY_WEBHOOK_URL`            | No       | — (empty)                                | If set, stream lifecycle events (`stream_created`/`stream_withdrawn`/`stream_cancelled`) are POSTed here as JSON.                                |
+| `RATE_LIMIT_MAX`                | No       | `100`                                    | Global maximum number of requests allowed per time window across the API.                      |
+| `RATE_LIMIT_WINDOW`             | No       | `1 minute`                               | Global rate limit time window (e.g. `1 minute`, `10000` ms).                                    |
+| `RATE_LIMIT_APPLICATION_MAX`    | No       | `5`                                      | Maximum number of NGO application submissions allowed per time window.                         |
+| `RATE_LIMIT_APPLICATION_WINDOW`| No       | `1 minute`                               | Rate limit time window for NGO application submissions.                                         |
 | `LOG_LEVEL`                     | No       | `info`                                   | Pino log level: `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace`.                     |
 | `NODE_ENV`                      | No       | unset (treated as development)           | Set to `production` to switch logging to structured JSON instead of pino-pretty. Set automatically inside the Docker image. |
 

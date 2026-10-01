@@ -124,6 +124,7 @@ describe('handleDonationVaultEvent', () => {
     const stream = await prisma.stream.findUnique({ where: { onChainId: 3n } });
     expect(stream?.balance).toBe('0');
     expect(stream?.rate).toBe('0');
+    expect(stream?.lastRate).toBe('10'); // original rate preserved from before cancel
     expect(stream?.withdrawn).toBe('500'); // 200 already withdrawn + 300 settled on cancel
     expect(stream?.status).toBe('CANCELLED');
   });
@@ -178,5 +179,28 @@ describe('handleDonationVaultEvent', () => {
 
     const stream = await prisma.stream.findUnique({ where: { onChainId: 4n } });
     expect(stream?.balance).toBe('1000'); // unchanged — see the handler's comment
+  });
+
+  it('no-ops when a withdraw event is received for an unknown stream', async () => {
+    const unknownOnChainId = 999n;
+    const event = makeEvent([symbolScVal('withdraw'), u64ScVal(unknownOnChainId)], i128ScVal(500n));
+
+    await expect(handleDonationVaultEvent(event)).resolves.not.toThrow();
+
+    const stream = await prisma.stream.findUnique({ where: { onChainId: unknownOnChainId } });
+    expect(stream).toBeNull();
+  });
+
+  it('no-ops when a cancel event is received for an unknown stream', async () => {
+    const unknownOnChainId = 999n;
+    const event = makeEvent(
+      [symbolScVal('cancel'), u64ScVal(unknownOnChainId)],
+      xdr.ScVal.scvVec([i128ScVal(300n), i128ScVal(700n)]),
+    );
+
+    await expect(handleDonationVaultEvent(event)).resolves.not.toThrow();
+
+    const stream = await prisma.stream.findUnique({ where: { onChainId: unknownOnChainId } });
+    expect(stream).toBeNull();
   });
 });

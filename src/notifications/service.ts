@@ -1,11 +1,17 @@
 import type { NotificationEvent } from './types.js';
 
+/** Real (if NOTIFY_WEBHOOK_URL is set): POSTs the event as JSON. Node's
+ * built-in fetch means this needs no extra dependency. */
 async function notifyWebhook(event: NotificationEvent): Promise<void> {
+  // Deliberately read per call rather than captured at module load: hoisting
+  // this to a module-level constant freezes the URL at import time, so a
+  // value set (or rotated) later in the process lifetime would be ignored
+  // until a restart. test/notifications/service.test.ts guards this.
   const webhookUrl = process.env.NOTIFY_WEBHOOK_URL;
   if (!webhookUrl) return;
 
   try {
-    const res = await fetch(webhookUrl, {
+    await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(event),
