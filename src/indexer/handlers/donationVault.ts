@@ -1,6 +1,7 @@
 import { scValToNative } from '@stellar/stellar-sdk';
 
 import { prisma } from '../../db.js';
+import { logger } from '../../logger.js';
 import { notify } from '../../notifications/service.js';
 import type { ContractEvent } from '../worker.js';
 
@@ -86,7 +87,7 @@ async function handleStreamCreated(event: ContractEvent): Promise<void> {
         },
       },
     });
-    
+
     return { ngo };
   });
 
@@ -119,11 +120,24 @@ async function handleWithdraw(event: ContractEvent): Promise<void> {
   const stream = await prisma.stream.findUnique({ where: { onChainId } });
   if (!stream) return;
 
+  const balance = BigInt(stream.balance);
+  const nextBalance = balance - accrued;
+  if (nextBalance < 0n) {
+    logger.warn(
+      {
+        onChainId: onChainId.toString(),
+        balance: balance.toString(),
+        accrued: accrued.toString(),
+      },
+      'withdraw exceeds recorded stream balance',
+    );
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.stream.update({
       where: { onChainId },
       data: {
-        balance: (BigInt(stream.balance) - accrued).toString(),
+        balance: (nextBalance < 0n ? 0n : nextBalance).toString(),
         withdrawn: (BigInt(stream.withdrawn) + accrued).toString(),
         updatedAt: new Date(event.ledgerClosedAt),
       },

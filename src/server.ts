@@ -94,9 +94,15 @@ export function buildServer(options?: BuildServerOptions) {
 
   app.setErrorHandler<Error & { statusCode?: number }>((error, request, reply) => {
     request.log.error(error);
-    const statusCode =
-      error.statusCode && error.statusCode >= 400 && error.statusCode < 600
+    const candidateStatusCode =
+      typeof error === 'object' && error !== null && 'statusCode' in error
         ? error.statusCode
+        : undefined;
+    const statusCode =
+      typeof candidateStatusCode === 'number' &&
+      candidateStatusCode >= 400 &&
+      candidateStatusCode < 600
+        ? candidateStatusCode
         : 500;
     const errorString =
       statusCode === 404

@@ -220,6 +220,34 @@ describe('backoff on RPC failures (#115)', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
+  it('does not overlap polls when an RPC request takes longer than the interval', async () => {
+    process.env.INDEXER_POLL_INTERVAL_MS = '10';
+    mocks.getCheckpoint.mockResolvedValue(100);
+    mocks.saveCheckpoint.mockResolvedValue(undefined);
+    let latestLedger = 100;
+    mocks.getLatestLedgerSequence.mockImplementation(async () => ++latestLedger);
+
+    let activePolls = 0;
+    let maxConcurrentPolls = 0;
+    mocks.getEvents.mockImplementation(async () => {
+      activePolls += 1;
+      maxConcurrentPolls = Math.max(maxConcurrentPolls, activePolls);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      activePolls -= 1;
+      return { events: [], latestLedger: 101 };
+    });
+
+    const { startIndexer } = await freshIndexer();
+    vi.useFakeTimers();
+
+    const stop = startIndexer(async () => {});
+    await vi.advanceTimersByTimeAsync(175);
+    await stop();
+
+    expect(maxConcurrentPolls).toBe(1);
+    expect(mocks.getEvents).toHaveBeenCalledTimes(3);
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
