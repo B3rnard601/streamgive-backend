@@ -39,6 +39,46 @@ const reviewBodySchema = z.object({
   reviewNote: z.string().max(2000).optional(),
 });
 
+/**
+ * Inserts a PENDING application, or reports the application that already
+ * blocks this address.
+ *
+ * Read-then-write is a race on its own: two POSTs that arrive together both
+ * read "nothing blocking", both insert, and one address ends up with two
+ * PENDING applications. The obvious remedy — a partial unique index on
+ * (owner_address) WHERE status = 'PENDING' — is not available here. This
+ * project syncs its schema with `prisma db push` and has no migration files
+ * (see DEPLOYMENT.md), so a raw index would never be applied, and Prisma's
+ * schema language cannot express a partial index anyway.
+ *
+ * So the insert is serialised in the database instead: a transaction-scoped
+ * advisory lock keyed on the owner address. The second request blocks until
+ * the first transaction commits, then re-reads inside its own transaction and
+ * sees the row the winner inserted, taking the 409 path. Postgres releases
+ * the lock at COMMIT or ROLLBACK, so a crashed request cannot wedge the
+ * address, and a `hashtext` collision only serialises two unrelated addresses
+ * — it can never let a duplicate through.
+ */
+async function createApplicationUnlessBlocked(data: z.infer<typeof applicationSchema>) {
+  return prisma.$transaction(async (tx) => {
+    // `::text` pins the bind parameter's type instead of leaving it to the
+    // server to infer.
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${data.ownerAddress}::text)::bigint)`;
+
+    const existingApp = await tx.ngoApplication.findFirst({
+      where: {
+        ownerAddress: data.ownerAddress,
+        status: { in: ['PENDING', 'APPROVED'] },
+      },
+    });
+    if (existingApp) {
+      return { ok: false as const, status: existingApp.status };
+    }
+
+    return { ok: true as const, application: await tx.ngoApplication.create({ data }) };
+  });
+}
+
 export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> {
   app.post(
     '/ngo-applications',
@@ -59,21 +99,15 @@ export async function ngoApplicationRoutes(app: FastifyInstance): Promise<void> 
           .send({ error: 'invalid_request', details: parsed.error.flatten() });
       }
 
-      const existingApp = await prisma.ngoApplication.findFirst({
-        where: {
-          ownerAddress: parsed.data.ownerAddress,
-          status: { in: ['PENDING', 'APPROVED'] },
-        },
-      });
-      if (existingApp) {
-        if (existingApp.status === 'APPROVED') {
+      const result = await createApplicationUnlessBlocked(parsed.data);
+      if (!result.ok) {
+        if (result.status === 'APPROVED') {
           return reply.code(409).send({ error: 'already_approved' });
         }
         return reply.code(409).send({ error: 'application_already_pending' });
       }
 
-      const application = await prisma.ngoApplication.create({ data: parsed.data });
-      return reply.code(201).send(application);
+      return reply.code(201).send(result.application);
     },
   );
 
