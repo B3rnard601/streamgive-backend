@@ -75,6 +75,36 @@ describe('GET /streams', () => {
     await app.close();
   });
 
+  it('coerces a string limit and rejects values above the maximum', async () => {
+    const app = buildServer();
+
+    const donor = await prisma.donor.create({ data: { address: fakeAddress('L') } });
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('M'), name: 'Limit NGO', verified: true },
+    });
+    await prisma.stream.createMany({
+      data: Array.from({ length: 3 }, (_, index) => ({
+        onChainId: BigInt(50 + index),
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('N'),
+        rate: '1',
+        balance: '100',
+        withdrawn: '0',
+      })),
+    });
+
+    const coerced = await app.inject({ method: 'GET', url: `/streams?ngo=${ngo.id}&limit=2` });
+    expect(coerced.statusCode).toBe(200);
+    expect(coerced.json().streams).toHaveLength(2);
+    expect(coerced.json().hasMore).toBe(true);
+
+    const tooLarge = await app.inject({ method: 'GET', url: `/streams?ngo=${ngo.id}&limit=101` });
+    expect(tooLarge.statusCode).toBe(400);
+
+    await app.close();
+  });
+
   it('pages through results with a filter applied', async () => {
     const app = buildServer();
 
@@ -122,16 +152,18 @@ describe('GET /streams', () => {
     expect(firstBody.streams).toHaveLength(2);
     expect(firstBody.hasMore).toBe(true);
     expect(firstBody.streams.map((s: { onChainId: string }) => s.onChainId)).toEqual(['3', '2']);
+    expect(firstBody.nextCursor).toBe(firstBody.streams[1].id);
 
     const secondPage = await app.inject({
       method: 'GET',
-      url: `/streams?ngo=${ngo.id}&limit=2&cursor=${firstBody.streams[1].id}`,
+      url: `/streams?ngo=${ngo.id}&limit=2&cursor=${firstBody.nextCursor}`,
     });
     expect(secondPage.statusCode).toBe(200);
     const secondBody = secondPage.json();
     expect(secondBody.streams).toHaveLength(1);
     expect(secondBody.streams[0].onChainId).toBe('1');
     expect(secondBody.hasMore).toBe(false);
+    expect(secondBody.nextCursor).toBeNull();
 
     await app.close();
   });
@@ -302,68 +334,38 @@ describe('GET /streams', () => {
 
     await app.close();
   });
-
-  it('includes createdTxHash in list response (non-null when set)', async () => {
+  it('exposes lastRate for a cancelled stream via GET /streams/:id', async () => {
     const app = buildServer();
 
-    const donor = await prisma.donor.create({ data: { address: fakeAddress('A') } });
+    const donor = await prisma.donor.create({ data: { address: fakeAddress('M') } });
     const ngo = await prisma.ngo.create({
-      data: { ownerAddress: fakeAddress('B'), name: 'NGO', verified: true },
+      data: { ownerAddress: fakeAddress('N'), name: 'NGO N', verified: true },
     });
-    const txHash = 'c4515e3bdc0897f21cc5dbec8c82cf0a936d4741cb74a8e158eb51b9fb00411a';
-
-    await prisma.stream.create({
+    const stream = await prisma.stream.create({
       data: {
-        onChainId: 1n,
+        onChainId: 99n,
         donorId: donor.id,
         ngoId: ngo.id,
-        tokenAddress: fakeAddress('D'),
-        rate: '1',
-        balance: '100',
+        tokenAddress: fakeAddress('O'),
+        rate: '0',
+        lastRate: '42',
+        balance: '0',
         withdrawn: '0',
-        createdTxHash: txHash,
+        status: 'CANCELLED',
       },
     });
 
-    const response = await app.inject({ method: 'GET', url: '/streams' });
+    const response = await app.inject({ method: 'GET', url: `/streams/${stream.id}` });
     expect(response.statusCode).toBe(200);
 
     const body = response.json();
-    expect(body.streams).toHaveLength(1);
-    expect(body.streams[0].createdTxHash).toBe(txHash);
+    expect(body.rate).toBe('0');
+    expect(body.lastRate).toBe('42');
+    expect(body.status).toBe('CANCELLED');
 
     await app.close();
   });
 
-  it('includes createdTxHash as null in list response when not set', async () => {
-    const app = buildServer();
-
-    const donor = await prisma.donor.create({ data: { address: fakeAddress('A') } });
-    const ngo = await prisma.ngo.create({
-      data: { ownerAddress: fakeAddress('B'), name: 'NGO', verified: true },
-    });
-
-    await prisma.stream.create({
-      data: {
-        onChainId: 1n,
-        donorId: donor.id,
-        ngoId: ngo.id,
-        tokenAddress: fakeAddress('D'),
-        rate: '1',
-        balance: '100',
-        withdrawn: '0',
-      },
-    });
-
-    const response = await app.inject({ method: 'GET', url: '/streams' });
-    expect(response.statusCode).toBe(200);
-
-    const body = response.json();
-    expect(body.streams).toHaveLength(1);
-    expect(body.streams[0].createdTxHash).toBeNull();
-
-    await app.close();
-  });
 });
 
 describe('GET /streams/:id', () => {
@@ -476,6 +478,38 @@ describe('GET /streams/:id', () => {
 
     const response = await app.inject({ method: 'GET', url: '/streams/not-a-uuid' });
     expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
+
+  it('returns null name and registered false for a stream to an unregistered NGO', async () => {
+    const app = buildServer();
+
+    const donor = await prisma.donor.create({ data: { address: fakeAddress('A') } });
+    // Placeholder NGO: name is empty, not yet registered on-chain.
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('B'), name: '', verified: false },
+    });
+    const stream = await prisma.stream.create({
+      data: {
+        onChainId: 1n,
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('D'),
+        rate: '1',
+        balance: '100',
+        withdrawn: '0',
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: `/streams/${stream.id}` });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body.ngo.name).toBeNull();
+    expect(body.ngo.registered).toBe(false);
+    // ownerAddress is still present so clients can display the wallet address if they choose.
+    expect(body.ngo.ownerAddress).toBe(ngo.ownerAddress);
 
     await app.close();
   });

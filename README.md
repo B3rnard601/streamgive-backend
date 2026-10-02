@@ -10,6 +10,15 @@ serves the data that powers the frontend.
 - Fastify (API server)
 - PostgreSQL
 
+## NGO Verification Model
+
+An NGO's verified status consists of two distinct steps kept deliberately separate:
+
+1. **Off-Chain Application Review (`NgoApplication.status`)**: An NGO submits an off-chain application containing organization details and verification documents. Admins review and update the application status (e.g., `APPROVED` or `REJECTED`) within the database.
+2. **On-Chain Contract Approval (`Ngo.verified`)**: Once an application is reviewed off-chain, an admin executes an on-chain transaction (`approve_ngo`) to grant the NGO verified status on the Stellar smart contract. The indexer listens for on-chain events (`ngo_approved` / `ngo_revoked`) and updates the `Ngo.verified` field accordingly.
+
+Keeping off-chain application review separate from on-chain contract approval ensures that sensitive organizational details and review metadata remain off-chain, while the Stellar ledger remains the single source of truth for execution permissions and verified status.
+
 ## Local development
 
 ```
@@ -73,6 +82,46 @@ for each on-chain event it processes (see
 [src/notifications/service.ts](./src/notifications/service.ts)). The body is
 one of the following shapes, discriminated by `type`
 (see [src/notifications/types.ts](./src/notifications/types.ts)):
+
+### Verifying the signature
+
+The webhook URL is not a secret — anyone who learns it can POST whatever they
+like to your receiver. Set `NOTIFY_WEBHOOK_SECRET` to a shared secret and
+every request will additionally carry:
+
+```
+x-streamgive-signature: <hex>
+```
+
+where `<hex>` is the lower-case hex HMAC-SHA256 of the **raw request body**,
+keyed with `NOTIFY_WEBHOOK_SECRET`. There is no prefix, timestamp or version
+tag in the value — it is the bare digest.
+
+Verify it against the bytes you read off the wire, before parsing them as
+JSON: re-serialising the parsed object can reorder keys or change whitespace,
+and the digest would no longer match. Compare in constant time so the
+comparison itself does not leak the expected digest a byte at a time.
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+function isFromStreamGive(rawBody, signatureHeader, secret) {
+  if (!signatureHeader) return false;
+
+  const expected = createHmac('sha256', secret).update(rawBody).digest();
+  const received = Buffer.from(signatureHeader, 'hex');
+
+  // timingSafeEqual throws on a length mismatch, so check that first.
+  return received.length === expected.length && timingSafeEqual(received, expected);
+}
+```
+
+Reject any request whose signature does not match, and any unsigned request
+once you have configured a secret. When `NOTIFY_WEBHOOK_SECRET` is unset the
+header is omitted entirely, so receivers can be rolled out before the secret
+is configured — but an endpoint that accepts unsigned requests is exactly the
+hole the header exists to close, so treat that as a migration step rather
+than a resting state.
 
 ### `stream_created`
 
@@ -173,3 +222,14 @@ Early development.
 ## License
 
 Apache-2.0 — see [LICENSE](./LICENSE).
+
+
+## Local development
+
+```bash
+cp .env.example .env
+docker compose up -d postgres   # starts Postgres (+ a streamgive_test DB)
+npm install
+npm run db:migrate              # apply Prisma migrations to streamgive
+npm run db:seed                 # optional: load sample NGOs, donors and streams
+npm run dev

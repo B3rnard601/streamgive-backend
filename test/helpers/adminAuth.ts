@@ -9,8 +9,8 @@ export function signAdminRequest(
   keypair: Keypair,
   method: string,
   url: string,
+  timestamp: string = Date.now().toString(),
 ): Record<string, string> {
-  const timestamp = Date.now().toString();
   const payload = `${method}:${url}:${timestamp}`;
   // `sign()` returns a Uint8Array, not a Buffer — calling `.toString('base64')`
   // on it straight would hit Array.prototype.toString, which ignores the
