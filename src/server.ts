@@ -137,7 +137,7 @@ export function buildServer(options?: BuildServerOptions) {
     timeWindow: process.env.RATE_LIMIT_WINDOW ?? '1 minute',
   });
 
-  app.get('/health', async (_request, reply) => {
+  app.get('/v1/health', async (_request, reply) => {
     try {
       await prisma.$queryRaw`SELECT 1`;
       return { status: 'ok' };
@@ -146,12 +146,13 @@ export function buildServer(options?: BuildServerOptions) {
     }
   });
 
-  app.register(ngoRoutes);
-  app.register(donorRoutes);
-  app.register(streamRoutes);
-  app.register(impactRoutes);
-  app.register(ngoApplicationRoutes);
-  app.register(indexerStatusRoutes);
+  const apiPrefix = { prefix: '/v1' };
+  app.register(ngoRoutes, apiPrefix);
+  app.register(donorRoutes, apiPrefix);
+  app.register(streamRoutes, apiPrefix);
+  app.register(impactRoutes, apiPrefix);
+  app.register(ngoApplicationRoutes, apiPrefix);
+  app.register(indexerStatusRoutes, apiPrefix);
 
   return app;
 }

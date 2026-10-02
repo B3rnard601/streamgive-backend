@@ -4,7 +4,7 @@ import { prisma } from '../../src/db.js';
 import { buildServer } from '../../src/server.js';
 import { fakeAddress, resetDb } from '../helpers/db.js';
 
-describe('GET /ngos', () => {
+describe('GET /v1/ngos', () => {
   afterEach(async () => {
     await resetDb();
   });
@@ -19,7 +19,7 @@ describe('GET /ngos', () => {
       data: { ownerAddress: fakeAddress('B'), name: 'Verified NGO', verified: true },
     });
 
-    const response = await app.inject({ method: 'GET', url: '/ngos' });
+    const response = await app.inject({ method: 'GET', url: '/v1/ngos' });
     expect(response.statusCode).toBe(200);
 
     const body = response.json();
@@ -40,7 +40,7 @@ describe('GET /ngos', () => {
       });
     }
 
-    const firstPage = await app.inject({ method: 'GET', url: '/ngos?limit=2' });
+    const firstPage = await app.inject({ method: 'GET', url: '/v1/ngos?limit=2' });
     expect(firstPage.statusCode).toBe(200);
     const firstBody = firstPage.json();
     expect(firstBody.ngos).toHaveLength(2);
@@ -49,7 +49,7 @@ describe('GET /ngos', () => {
 
     const secondPage = await app.inject({
       method: 'GET',
-      url: `/ngos?limit=2&cursor=${firstBody.nextCursor}`,
+      url: `/v1/ngos?limit=2&cursor=${firstBody.nextCursor}`,
     });
     expect(secondPage.statusCode).toBe(200);
     const secondBody = secondPage.json();
@@ -71,7 +71,7 @@ describe('GET /ngos', () => {
       });
     }
 
-    const response = await app.inject({ method: 'GET', url: '/ngos?sort=oldest' });
+    const response = await app.inject({ method: 'GET', url: '/v1/ngos?sort=oldest' });
     expect(response.statusCode).toBe(200);
 
     const body = response.json();
@@ -94,7 +94,7 @@ describe('GET /ngos', () => {
       data: { ownerAddress: fakeAddress('B'), name: 'Midway NGO', verified: true },
     });
 
-    const response = await app.inject({ method: 'GET', url: '/ngos?sort=name' });
+    const response = await app.inject({ method: 'GET', url: '/v1/ngos?sort=name' });
     expect(response.statusCode).toBe(200);
 
     const body = response.json();
@@ -107,7 +107,7 @@ describe('GET /ngos', () => {
   it('400s on an unknown sort value', async () => {
     const app = buildServer();
 
-    const response = await app.inject({ method: 'GET', url: '/ngos?sort=invalid' });
+    const response = await app.inject({ method: 'GET', url: '/v1/ngos?sort=invalid' });
     expect(response.statusCode).toBe(400);
 
     await app.close();
@@ -126,7 +126,7 @@ describe('GET /ngos', () => {
       data: { ownerAddress: fakeAddress('C'), name: 'Ocean Cleanup Fund', verified: true },
     });
 
-    const response = await app.inject({ method: 'GET', url: '/ngos?q=ocean' });
+    const response = await app.inject({ method: 'GET', url: '/v1/ngos?q=ocean' });
     expect(response.statusCode).toBe(200);
 
     const body = response.json();
@@ -145,7 +145,7 @@ describe('GET /ngos', () => {
       data: { ownerAddress: fakeAddress('A'), name: 'Green Earth', verified: true },
     });
 
-    const response = await app.inject({ method: 'GET', url: '/ngos?q=zzznomatch' });
+    const response = await app.inject({ method: 'GET', url: '/v1/ngos?q=zzznomatch' });
     expect(response.statusCode).toBe(200);
 
     const body = response.json();
@@ -158,14 +158,14 @@ describe('GET /ngos', () => {
     const app = buildServer();
 
     const longQ = 'a'.repeat(101);
-    const response = await app.inject({ method: 'GET', url: `/ngos?q=${longQ}` });
+    const response = await app.inject({ method: 'GET', url: `/v1/ngos?q=${longQ}` });
     expect(response.statusCode).toBe(400);
 
     await app.close();
   });
 });
 
-describe('GET /ngos/lookup', () => {
+describe('GET /v1/ngos/lookup', () => {
   afterEach(async () => {
     await resetDb();
   });
@@ -179,7 +179,7 @@ describe('GET /ngos/lookup', () => {
 
     const response = await app.inject({
       method: 'GET',
-      url: `/ngos/lookup?address=${ngo.ownerAddress}`,
+      url: `/v1/ngos/lookup?address=${ngo.ownerAddress}`,
     });
     expect(response.statusCode).toBe(200);
 
@@ -195,7 +195,7 @@ describe('GET /ngos/lookup', () => {
 
     const response = await app.inject({
       method: 'GET',
-      url: `/ngos/lookup?address=${fakeAddress('Z')}`,
+      url: `/v1/ngos/lookup?address=${fakeAddress('Z')}`,
     });
     expect(response.statusCode).toBe(404);
 
@@ -205,14 +205,14 @@ describe('GET /ngos/lookup', () => {
   it('400s on a malformed address instead of matching nothing silently', async () => {
     const app = buildServer();
 
-    const response = await app.inject({ method: 'GET', url: '/ngos/lookup?address=not-an-address' });
+    const response = await app.inject({ method: 'GET', url: '/v1/ngos/lookup?address=not-an-address' });
     expect(response.statusCode).toBe(400);
 
     await app.close();
   });
 });
 
-describe('GET /ngos/:id', () => {
+describe('GET /v1/ngos/:id', () => {
   afterEach(async () => {
     await resetDb();
   });
@@ -222,7 +222,7 @@ describe('GET /ngos/:id', () => {
 
     const response = await app.inject({
       method: 'GET',
-      url: '/ngos/00000000-0000-0000-0000-000000000000',
+      url: '/v1/ngos/00000000-0000-0000-0000-000000000000',
     });
     expect(response.statusCode).toBe(404);
 
@@ -232,7 +232,7 @@ describe('GET /ngos/:id', () => {
   it('400s for a non-uuid id instead of leaking a Prisma error', async () => {
     const app = buildServer();
 
-    const response = await app.inject({ method: 'GET', url: '/ngos/not-a-uuid' });
+    const response = await app.inject({ method: 'GET', url: '/v1/ngos/not-a-uuid' });
     expect(response.statusCode).toBe(400);
 
     await app.close();
@@ -259,7 +259,7 @@ describe('GET /ngos/:id', () => {
       },
     });
 
-    const response = await app.inject({ method: 'GET', url: `/ngos/${ngo.id}` });
+    const response = await app.inject({ method: 'GET', url: `/v1/ngos/${ngo.id}` });
     expect(response.statusCode).toBe(200);
 
     const body = response.json();
@@ -305,7 +305,7 @@ describe('GET /ngos/:id', () => {
       ],
     });
 
-    const response = await app.inject({ method: 'GET', url: `/ngos/${ngo.id}` });
+    const response = await app.inject({ method: 'GET', url: `/v1/ngos/${ngo.id}` });
     expect(response.statusCode).toBe(200);
 
     const body = response.json();
@@ -335,7 +335,7 @@ describe('GET /ngos/:id', () => {
       },
     });
 
-    const response = await app.inject({ method: 'GET', url: `/ngos/${ngo.id}` });
+    const response = await app.inject({ method: 'GET', url: `/v1/ngos/${ngo.id}` });
     expect(response.statusCode).toBe(200);
 
     const body = response.json();
@@ -364,7 +364,7 @@ describe('GET /ngos/:id', () => {
       },
     });
 
-    const response = await app.inject({ method: 'GET', url: `/ngos/${ngo.id}` });
+    const response = await app.inject({ method: 'GET', url: `/v1/ngos/${ngo.id}` });
     expect(response.statusCode).toBe(200);
 
     const body = response.json();
@@ -376,7 +376,7 @@ describe('GET /ngos/:id', () => {
   });
 });
 
-describe('GET /ngos/:id/donors', () => {
+describe('GET /v1/ngos/:id/donors', () => {
   afterEach(async () => {
     await resetDb();
   });
@@ -450,7 +450,7 @@ describe('GET /ngos/:id/donors', () => {
       ],
     });
 
-    const first = await app.inject({ method: 'GET', url: `/ngos/${ngo.id}/donors?limit=2` });
+    const first = await app.inject({ method: 'GET', url: `/v1/ngos/${ngo.id}/donors?limit=2` });
     expect(first.statusCode).toBe(200);
     const firstBody = first.json();
     expect(firstBody.donors).toHaveLength(2);
@@ -458,7 +458,7 @@ describe('GET /ngos/:id/donors', () => {
 
     const second = await app.inject({
       method: 'GET',
-      url: `/ngos/${ngo.id}/donors?limit=2&cursor=${firstBody.nextCursor}`,
+      url: `/v1/ngos/${ngo.id}/donors?limit=2&cursor=${firstBody.nextCursor}`,
     });
     expect(second.statusCode).toBe(200);
     const secondBody = second.json();
@@ -486,7 +486,7 @@ describe('GET /ngos/:id/donors', () => {
 
     const response = await app.inject({
       method: 'GET',
-      url: '/ngos/00000000-0000-0000-0000-000000000000/donors',
+      url: '/v1/ngos/00000000-0000-0000-0000-000000000000/donors',
     });
 
     expect(response.statusCode).toBe(404);

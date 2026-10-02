@@ -18,7 +18,7 @@ function validApplicationPayload(overrides: Partial<Record<string, unknown>> = {
   };
 }
 
-describe('POST /ngo-applications', () => {
+describe('POST /v1/ngo-applications', () => {
   beforeAll(() => {
     process.env.ADMIN_ADDRESS = adminKeypair.publicKey();
   });
@@ -32,7 +32,7 @@ describe('POST /ngo-applications', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: '/ngo-applications',
+      url: '/v1/ngo-applications',
       payload: validApplicationPayload(),
     });
 
@@ -47,7 +47,7 @@ describe('POST /ngo-applications', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: '/ngo-applications',
+      url: '/v1/ngo-applications',
       payload: validApplicationPayload({ contactEmail: 'not-an-email' }),
     });
 
@@ -61,7 +61,7 @@ describe('POST /ngo-applications', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: '/ngo-applications',
+      url: '/v1/ngo-applications',
       payload: validApplicationPayload({ website: 'example.org' }),
     });
 
@@ -76,7 +76,7 @@ describe('POST /ngo-applications', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: '/ngo-applications',
+      url: '/v1/ngo-applications',
       payload: validApplicationPayload({ website: 'https://example.org' }),
     });
 
@@ -91,7 +91,7 @@ describe('POST /ngo-applications', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: '/ngo-applications',
+      url: '/v1/ngo-applications',
       payload: validApplicationPayload({ ownerAddress: 'invalid-stellar-address' }),
     });
 
@@ -104,10 +104,10 @@ describe('POST /ngo-applications', () => {
     const app = buildServer();
     const payload = validApplicationPayload();
 
-    const first = await app.inject({ method: 'POST', url: '/ngo-applications', payload });
+    const first = await app.inject({ method: 'POST', url: '/v1/ngo-applications', payload });
     expect(first.statusCode).toBe(201);
 
-    const second = await app.inject({ method: 'POST', url: '/ngo-applications', payload });
+    const second = await app.inject({ method: 'POST', url: '/v1/ngo-applications', payload });
     expect(second.statusCode).toBe(409);
 
     await app.close();
@@ -121,7 +121,7 @@ describe('POST /ngo-applications', () => {
       data: { ...payload, status: 'APPROVED' },
     });
 
-    const response = await app.inject({ method: 'POST', url: '/ngo-applications', payload });
+    const response = await app.inject({ method: 'POST', url: '/v1/ngo-applications', payload });
     expect(response.statusCode).toBe(409);
     expect(response.json().error).toBe('already_approved');
 
@@ -136,7 +136,7 @@ describe('POST /ngo-applications', () => {
       data: { ...payload, status: 'REJECTED' },
     });
 
-    const response = await app.inject({ method: 'POST', url: '/ngo-applications', payload });
+    const response = await app.inject({ method: 'POST', url: '/v1/ngo-applications', payload });
     expect(response.statusCode).toBe(201);
     expect(response.json().status).toBe('PENDING');
 
@@ -144,7 +144,7 @@ describe('POST /ngo-applications', () => {
   });
 });
 
-describe('GET /ngo-applications/status', () => {
+describe('GET /v1/ngo-applications/status', () => {
   afterEach(async () => {
     await resetDb();
   });
@@ -162,7 +162,7 @@ describe('GET /ngo-applications/status', () => {
 
     const response = await app.inject({
       method: 'GET',
-      url: `/ngo-applications/status?ownerAddress=${ownerAddress}`,
+      url: `/v1/ngo-applications/status?ownerAddress=${ownerAddress}`,
     });
 
     expect(response.statusCode).toBe(200);
@@ -181,7 +181,7 @@ describe('GET /ngo-applications/status', () => {
 
     const response = await app.inject({
       method: 'GET',
-      url: `/ngo-applications/status?ownerAddress=${fakeAddress('N')}`,
+      url: `/v1/ngo-applications/status?ownerAddress=${fakeAddress('N')}`,
     });
 
     expect(response.statusCode).toBe(404);
@@ -195,7 +195,7 @@ describe('GET /ngo-applications/status', () => {
 
     const response = await app.inject({
       method: 'GET',
-      url: '/ngo-applications/status?ownerAddress=not-an-address',
+      url: '/v1/ngo-applications/status?ownerAddress=not-an-address',
     });
 
     expect(response.statusCode).toBe(400);
@@ -207,7 +207,7 @@ describe('GET /ngo-applications/status', () => {
   it('rejects a missing address with 400', async () => {
     const app = buildServer();
 
-    const response = await app.inject({ method: 'GET', url: '/ngo-applications/status' });
+    const response = await app.inject({ method: 'GET', url: '/v1/ngo-applications/status' });
 
     expect(response.statusCode).toBe(400);
 
@@ -227,7 +227,7 @@ describe('admin NGO application review', () => {
   it('rejects an unsigned request with 401', async () => {
     const app = buildServer();
 
-    const response = await app.inject({ method: 'GET', url: '/ngo-applications' });
+    const response = await app.inject({ method: 'GET', url: '/v1/ngo-applications' });
     expect(response.statusCode).toBe(401);
 
     await app.close();
@@ -235,10 +235,10 @@ describe('admin NGO application review', () => {
 
   it('rejects a validly encoded signature with the wrong byte length', async () => {
     const app = buildServer();
-    const headers = signAdminRequest(adminKeypair, 'GET', '/ngo-applications');
+    const headers = signAdminRequest(adminKeypair, 'GET', '/v1/ngo-applications');
     headers['x-admin-signature'] = Buffer.alloc(63).toString('base64');
 
-    const response = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
+    const response = await app.inject({ method: 'GET', url: '/v1/ngo-applications', headers });
     expect(response.statusCode).toBe(401);
     expect(response.json().error).toBe('unauthorized');
 
@@ -247,9 +247,9 @@ describe('admin NGO application review', () => {
 
   it('allows a correctly signed admin request', async () => {
     const app = buildServer();
-    const headers = signAdminRequest(adminKeypair, 'GET', '/ngo-applications');
+    const headers = signAdminRequest(adminKeypair, 'GET', '/v1/ngo-applications');
 
-    const response = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
+    const response = await app.inject({ method: 'GET', url: '/v1/ngo-applications', headers });
     expect(response.statusCode).toBe(200);
 
     await app.close();
@@ -257,12 +257,12 @@ describe('admin NGO application review', () => {
 
   it('rejects replaying the same signed request within the freshness window', async () => {
     const app = buildServer();
-    const headers = signAdminRequest(adminKeypair, 'GET', '/ngo-applications');
+    const headers = signAdminRequest(adminKeypair, 'GET', '/v1/ngo-applications');
 
-    const first = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
+    const first = await app.inject({ method: 'GET', url: '/v1/ngo-applications', headers });
     expect(first.statusCode).toBe(200);
 
-    const replay = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
+    const replay = await app.inject({ method: 'GET', url: '/v1/ngo-applications', headers });
     expect(replay.statusCode).toBe(401);
     expect(replay.json().error).toBe('replayed_signature');
 
@@ -277,7 +277,7 @@ describe('admin NGO application review', () => {
       ),
     );
 
-    const url = '/ngo-applications?limit=2&offset=1';
+    const url = '/v1/ngo-applications?limit=2&offset=1';
     const headers = signAdminRequest(adminKeypair, 'GET', url);
     const response = await app.inject({ method: 'GET', url, headers });
 
@@ -295,7 +295,7 @@ describe('admin NGO application review', () => {
     const app = buildServer();
 
     const application = await prisma.ngoApplication.create({ data: validApplicationPayload() });
-    const url = `/ngo-applications/${application.id}/approve`;
+    const url = `/v1/ngo-applications/${application.id}/approve`;
     const headers = signAdminRequest(adminKeypair, 'POST', url);
 
     const response = await app.inject({ method: 'POST', url, headers, payload: {} });
@@ -312,7 +312,7 @@ describe('admin NGO application review', () => {
     const app = buildServer();
 
     const application = await prisma.ngoApplication.create({ data: validApplicationPayload() });
-    const url = `/ngo-applications/${application.id}/approve`;
+    const url = `/v1/ngo-applications/${application.id}/approve`;
     const headers = signAdminRequest(adminKeypair, 'POST', url);
 
     const response = await app.inject({ method: 'POST', url, headers, payload: [] as never });
@@ -331,7 +331,7 @@ describe('admin NGO application review', () => {
     const app = buildServer();
 
     const application = await prisma.ngoApplication.create({ data: validApplicationPayload() });
-    const url = `/ngo-applications/${application.id}/reject`;
+    const url = `/v1/ngo-applications/${application.id}/reject`;
     const headers = signAdminRequest(adminKeypair, 'POST', url);
 
     const response = await app.inject({
@@ -354,9 +354,9 @@ describe('admin NGO application review', () => {
     const app = buildServer();
 
     const application = await prisma.ngoApplication.create({ data: validApplicationPayload() });
-    const realUrl = `/ngo-applications/${application.id}/approve`;
+    const realUrl = `/v1/ngo-applications/${application.id}/approve`;
     // Signed for a *different* application's approve endpoint.
-    const headers = signAdminRequest(adminKeypair, 'POST', '/ngo-applications/other-id/approve');
+    const headers = signAdminRequest(adminKeypair, 'POST', '/v1/ngo-applications/other-id/approve');
 
     const response = await app.inject({ method: 'POST', url: realUrl, headers, payload: {} });
     expect(response.statusCode).toBe(401);
@@ -368,7 +368,7 @@ describe('admin NGO application review', () => {
     const app = buildServer();
 
     const nonExistentId = '00000000-0000-0000-0000-000000000000';
-    const approveUrl = `/ngo-applications/${nonExistentId}/approve`;
+    const approveUrl = `/v1/ngo-applications/${nonExistentId}/approve`;
     const approveHeaders = signAdminRequest(adminKeypair, 'POST', approveUrl);
 
     const approveResponse = await app.inject({
@@ -380,7 +380,7 @@ describe('admin NGO application review', () => {
     expect(approveResponse.statusCode).toBe(404);
     expect(approveResponse.json().error).toBe('not_found');
 
-    const rejectUrl = `/ngo-applications/${nonExistentId}/reject`;
+    const rejectUrl = `/v1/ngo-applications/${nonExistentId}/reject`;
     const rejectHeaders = signAdminRequest(adminKeypair, 'POST', rejectUrl);
 
     const rejectResponse = await app.inject({
@@ -396,7 +396,7 @@ describe('admin NGO application review', () => {
   });
 });
 
-describe('GET /ngo-applications/stats', () => {
+describe('GET /v1/ngo-applications/stats', () => {
   beforeAll(() => {
     process.env.ADMIN_ADDRESS = adminKeypair.publicKey();
   });
@@ -408,7 +408,7 @@ describe('GET /ngo-applications/stats', () => {
   it('rejects an unsigned request with 401', async () => {
     const app = buildServer();
 
-    const response = await app.inject({ method: 'GET', url: '/ngo-applications/stats' });
+    const response = await app.inject({ method: 'GET', url: '/v1/ngo-applications/stats' });
     expect(response.statusCode).toBe(401);
 
     await app.close();
@@ -426,10 +426,10 @@ describe('GET /ngo-applications/stats', () => {
       ],
     });
 
-    const headers = signAdminRequest(adminKeypair, 'GET', '/ngo-applications/stats');
+    const headers = signAdminRequest(adminKeypair, 'GET', '/v1/ngo-applications/stats');
     const response = await app.inject({
       method: 'GET',
-      url: '/ngo-applications/stats',
+      url: '/v1/ngo-applications/stats',
       headers,
     });
 
@@ -444,10 +444,10 @@ describe('GET /ngo-applications/stats', () => {
   it('returns zero counts when there are no applications', async () => {
     const app = buildServer();
 
-    const headers = signAdminRequest(adminKeypair, 'GET', '/ngo-applications/stats');
+    const headers = signAdminRequest(adminKeypair, 'GET', '/v1/ngo-applications/stats');
     const response = await app.inject({
       method: 'GET',
-      url: '/ngo-applications/stats',
+      url: '/v1/ngo-applications/stats',
       headers,
     });
 
