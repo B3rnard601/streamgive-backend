@@ -14,5 +14,5 @@
     "declaration": false
   },
   "include": ["src"],
-  "exclude": ["src/indexer/worker.test.ts"]
+  "exclude": ["**/*.test.ts"]
 }

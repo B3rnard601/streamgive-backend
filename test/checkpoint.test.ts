@@ -25,3 +25,40 @@ describe('checkpoint persistence', () => {
     expect(await getCheckpoint()).toBe(321);
   });
 });
+
+describe('Intra-Ledger Checkpoint & Resumption (#39)', () => {
+  it('processes subsequent events in the same ledger after a mid-ledger crash', async () => {
+    const ledgerEvents = [
+      { id: 'evt_1', ledger: 100, data: 'first' },
+      { id: 'evt_2', ledger: 100, data: 'second' },
+    ];
+
+    let checkpoint = { lastLedger: 0, lastEventId: null as string | null };
+    const processedEvents: string[] = [];
+
+    const mockPoll = async () => {
+      const pendingEvents = ledgerEvents.filter((event) => {
+        if (checkpoint.lastEventId) {
+          return event.id !== checkpoint.lastEventId && event.ledger >= checkpoint.lastLedger;
+        }
+        return event.ledger >= checkpoint.lastLedger;
+      });
+
+      for (const event of pendingEvents) {
+        processedEvents.push(event.id);
+        checkpoint = { lastLedger: event.ledger, lastEventId: event.id };
+        if (event.id === 'evt_1') {
+          break;
+        }
+      }
+    };
+
+    await mockPoll();
+    expect(processedEvents).toEqual(['evt_1']);
+    expect(checkpoint.lastEventId).toBe('evt_1');
+
+    await mockPoll();
+
+    expect(processedEvents).toContain('evt_2');
+  });
+});

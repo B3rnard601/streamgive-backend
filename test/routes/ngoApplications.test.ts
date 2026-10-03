@@ -142,6 +142,32 @@ describe('POST /ngo-applications', () => {
 
     await app.close();
   });
+
+  it('lets only one of two concurrent submissions through', async () => {
+    const app = buildServer();
+    const payload = validApplicationPayload();
+
+    // Fired together rather than awaited in sequence: sequential requests are
+    // already covered above, and only a genuine overlap exercises the race
+    // where both requests read "nothing blocking" before either inserts.
+    const [first, second] = await Promise.all([
+      app.inject({ method: 'POST', url: '/ngo-applications', payload }),
+      app.inject({ method: 'POST', url: '/ngo-applications', payload }),
+    ]);
+
+    expect([first.statusCode, second.statusCode].sort((a, b) => a - b)).toEqual([201, 409]);
+
+    const loser = first.statusCode === 409 ? first : second;
+    expect(loser.json().error).toBe('application_already_pending');
+
+    const stored = await prisma.ngoApplication.findMany({
+      where: { ownerAddress: payload.ownerAddress },
+    });
+    expect(stored).toHaveLength(1);
+    expect(stored[0].status).toBe('PENDING');
+
+    await app.close();
+  });
 });
 
 describe('GET /ngo-applications/status', () => {
@@ -251,6 +277,20 @@ describe('admin NGO application review', () => {
 
     const response = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
     expect(response.statusCode).toBe(200);
+
+    await app.close();
+  });
+
+  it('rejects replaying the same signed request within the freshness window', async () => {
+    const app = buildServer();
+    const headers = signAdminRequest(adminKeypair, 'GET', '/ngo-applications');
+
+    const first = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
+    expect(first.statusCode).toBe(200);
+
+    const replay = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
+    expect(replay.statusCode).toBe(401);
+    expect(replay.json().error).toBe('replayed_signature');
 
     await app.close();
   });
