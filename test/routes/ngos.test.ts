@@ -462,6 +462,47 @@ describe('GET /ngos/:id', () => {
     await app.close();
   });
 
+  it('aggregates large stream histories and returns only a bounded recent page', async () => {
+    const app = buildServer();
+    const ngo = await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('M'), name: 'High Volume NGO', verified: true },
+    });
+    const donors = await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        prisma.donor.create({ data: { address: fakeAddress(String.fromCharCode(65 + index)) } }),
+      ),
+    );
+    const createdAt = new Date('2026-01-01T00:00:00Z');
+
+    await prisma.stream.createMany({
+      data: donors.map((donor, index) => ({
+        onChainId: BigInt(100 + index),
+        donorId: donor.id,
+        ngoId: ngo.id,
+        tokenAddress: fakeAddress('N'),
+        rate: '1',
+        balance: index < 3 ? '0' : '100',
+        withdrawn: '10',
+        status: index < 3 ? 'CANCELLED' : 'ACTIVE',
+        createdAt: new Date(createdAt.getTime() + index * 1_000),
+      })),
+    });
+
+    const response = await app.inject({ method: 'GET', url: `/ngos/${ngo.id}` });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body.stats.totalCommitted).toBe('1020');
+    expect(body.stats.totalWithdrawn).toBe('120');
+    expect(body.stats.activeStreamCount).toBe(9);
+    expect(body.stats.donorCount).toBe(12);
+    expect(body.recentStreams).toHaveLength(10);
+    expect(body.recentStreams[0].onChainId).toBe('111');
+    expect(body.recentStreamsNextCursor).toBe(body.recentStreams.at(-1).id);
+
+    await app.close();
+  });
+
   it('includes description, website and country from the approved application', async () => {
     const app = buildServer();
 
