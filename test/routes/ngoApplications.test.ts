@@ -259,6 +259,22 @@ describe('admin NGO application review', () => {
     await app.close();
   });
 
+  it('returns 503 when admin authentication is not configured', async () => {
+    const app = buildServer();
+    const configuredAddress = process.env.ADMIN_ADDRESS;
+    delete process.env.ADMIN_ADDRESS;
+
+    try {
+      const response = await app.inject({ method: 'GET', url: '/ngo-applications' });
+      expect(response.statusCode).toBe(503);
+      expect(response.json().error).toBe('admin_auth_not_configured');
+    } finally {
+      if (configuredAddress === undefined) delete process.env.ADMIN_ADDRESS;
+      else process.env.ADMIN_ADDRESS = configuredAddress;
+      await app.close();
+    }
+  });
+
   it('rejects a validly encoded signature with the wrong byte length', async () => {
     const app = buildServer();
     const headers = signAdminRequest(adminKeypair, 'GET', '/ngo-applications');
@@ -299,7 +315,9 @@ describe('admin NGO application review', () => {
     const app = buildServer();
     await Promise.all(
       ['A', 'B', 'C'].map((suffix) =>
-        prisma.ngoApplication.create({ data: validApplicationPayload({ ownerAddress: fakeAddress(suffix) }) }),
+        prisma.ngoApplication.create({
+          data: validApplicationPayload({ ownerAddress: fakeAddress(suffix) }),
+        }),
       ),
     );
 
