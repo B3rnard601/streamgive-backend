@@ -49,4 +49,26 @@ describe('CORS configuration', () => {
 
     await app.close();
   });
+
+  it('advertises PUT, PATCH, and DELETE for browser preflight requests', async () => {
+    process.env.CORS_ORIGINS = 'http://localhost:3001';
+    const app = buildServer();
+
+    const response = await app.inject({
+      method: 'OPTIONS',
+      url: '/health',
+      headers: {
+        origin: 'http://localhost:3001',
+        'access-control-request-method': 'PATCH',
+      },
+    });
+
+    const methods = String(response.headers['access-control-allow-methods'])
+      .split(',')
+      .map((method) => method.trim().toUpperCase());
+    expect(response.statusCode).toBe(204);
+    expect(methods).toEqual(expect.arrayContaining(['PUT', 'PATCH', 'DELETE']));
+
+    await app.close();
+  });
 });

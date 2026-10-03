@@ -142,6 +142,32 @@ describe('POST /v1/ngo-applications', () => {
 
     await app.close();
   });
+
+  it('lets only one of two concurrent submissions through', async () => {
+    const app = buildServer();
+    const payload = validApplicationPayload();
+
+    // Fired together rather than awaited in sequence: sequential requests are
+    // already covered above, and only a genuine overlap exercises the race
+    // where both requests read "nothing blocking" before either inserts.
+    const [first, second] = await Promise.all([
+      app.inject({ method: 'POST', url: '/ngo-applications', payload }),
+      app.inject({ method: 'POST', url: '/ngo-applications', payload }),
+    ]);
+
+    expect([first.statusCode, second.statusCode].sort((a, b) => a - b)).toEqual([201, 409]);
+
+    const loser = first.statusCode === 409 ? first : second;
+    expect(loser.json().error).toBe('application_already_pending');
+
+    const stored = await prisma.ngoApplication.findMany({
+      where: { ownerAddress: payload.ownerAddress },
+    });
+    expect(stored).toHaveLength(1);
+    expect(stored[0].status).toBe('PENDING');
+
+    await app.close();
+  });
 });
 
 describe('GET /v1/ngo-applications/status', () => {
@@ -169,7 +195,7 @@ describe('GET /v1/ngo-applications/status', () => {
     const body = response.json();
     expect(body.status).toBe('APPROVED');
     expect(body.createdAt).toBe(latest.createdAt.toISOString());
-    expect(body.updatedAt).toBe(latest.updatedAt.toISOString());
+    expect(body.updatedAt).toBe&latest.updatedAt.toISOString());
     // No contact details or other application fields leak out.
     expect(Object.keys(body).sort()).toEqual(['createdAt', 'status', 'updatedAt']);
 
@@ -233,6 +259,22 @@ describe('admin NGO application review', () => {
     await app.close();
   });
 
+  it('returns 503 when admin authentication is not configured', async () => {
+    const app = buildServer();
+    const configuredAddress = process.env.ADMIN_ADDRESS;
+    delete process.env.ADMIN_ADDRESS;
+
+    try {
+      const response = await app.inject({ method: 'GET', url: '/ngo-applications' });
+      expect(response.statusCode).toBe(503);
+      expect(response.json().error).toBe('admin_auth_not_configured');
+    } finally {
+      if (configuredAddress === undefined) delete process.env.ADMIN_ADDRESS;
+      else process.env.ADMIN_ADDRESS = configuredAddress;
+      await app.close();
+    }
+  });
+
   it('rejects a validly encoded signature with the wrong byte length', async () => {
     const app = buildServer();
     const headers = signAdminRequest(adminKeypair, 'GET', '/v1/ngo-applications');
@@ -255,6 +297,19 @@ describe('admin NGO application review', () => {
     await app.close();
   });
 
+it('rejects a seconds-based timestamp with a clear unit error', async () => {
+    const app = buildServer();
+    const headers = signAdminRequest(adminKeypair, 'GET', '/ngo-applications', {
+      timestamp: Math.floor(Date.now() / 1000),
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/ngo-applications', headers });
+    expect(response.statusCode).toBe(401);
+    expect(response.json().error).toBe('invalid_timestamp_unit');
+
+    await app.close();
+  });
+
   it('rejects replaying the same signed request within the freshness window', async () => {
     const app = buildServer();
     const headers = signAdminRequest(adminKeypair, 'GET', '/v1/ngo-applications');
@@ -273,7 +328,9 @@ describe('admin NGO application review', () => {
     const app = buildServer();
     await Promise.all(
       ['A', 'B', 'C'].map((suffix) =>
-        prisma.ngoApplication.create({ data: validApplicationPayload({ ownerAddress: fakeAddress(suffix) }) }),
+        prisma.ngoApplication.create({
+          data: validApplicationPayload({ ownerAddress: fakeAddress(suffix) }),
+        }),
       ),
     );
 
@@ -290,7 +347,6 @@ describe('admin NGO application review', () => {
 
     await app.close();
   });
-
   it('approves a pending application', async () => {
     const app = buildServer();
 
