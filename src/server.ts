@@ -136,7 +136,7 @@ export function buildServer(options?: BuildServerOptions) {
 
   app.register(cors, {
     origin: allowedOrigins,
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['content-type', 'x-admin-address', 'x-admin-signature', 'x-admin-timestamp'],
   });
 
