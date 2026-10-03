@@ -64,7 +64,10 @@ async function createApplicationUnlessBlocked(data: z.infer<typeof applicationSc
   return prisma.$transaction(async (tx) => {
     // `::text` pins the bind parameter's type instead of leaving it to the
     // server to infer.
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${data.ownerAddress}::text)::bigint)`;
+    // $executeRaw, not $queryRaw: pg_advisory_xact_lock returns `void`, which
+    // the pg driver adapter cannot deserialize into a JS value. $executeRaw
+    // only needs the row count, so it sidesteps the unsupported column type.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${data.ownerAddress}::text)::bigint)`;
 
     const existingApp = await tx.ngoApplication.findFirst({
       where: {

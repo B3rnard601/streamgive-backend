@@ -1,8 +1,12 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { Keypair } from '@stellar/stellar-sdk';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { prisma } from '../../src/db.js';
 import { buildServer } from '../../src/server.js';
 import { fakeAddress, resetDb } from '../helpers/db.js';
+import { signAdminRequest } from '../helpers/adminAuth.js';
+
+const adminKeypair = Keypair.random();
 
 describe('GET /ngos', () => {
   afterEach(async () => {
@@ -160,6 +164,147 @@ describe('GET /ngos', () => {
     const longQ = 'a'.repeat(101);
     const response = await app.inject({ method: 'GET', url: `/ngos?q=${longQ}` });
     expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
+});
+
+describe('GET /ngos/all (admin)', () => {
+  beforeAll(() => {
+    process.env.ADMIN_ADDRESS = adminKeypair.publicKey();
+  });
+
+  afterEach(async () => {
+    await resetDb();
+  });
+
+  it('rejects an unsigned request with 401', async () => {
+    const app = buildServer();
+
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('A'), name: 'Verified NGO', verified: true },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/ngos/all' });
+    expect(response.statusCode).toBe(401);
+
+    await app.close();
+  });
+
+  it('includes unverified NGOs for a correctly signed admin request', async () => {
+    const app = buildServer();
+
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('A'), name: 'Unverified NGO', verified: false },
+    });
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('B'), name: 'Verified NGO', verified: true },
+    });
+
+    const headers = signAdminRequest(adminKeypair, 'GET', '/ngos/all');
+    const response = await app.inject({ method: 'GET', url: '/ngos/all', headers });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    const names = body.ngos.map((n: { name: string }) => n.name).sort();
+    expect(names).toEqual(['Unverified NGO', 'Verified NGO']);
+
+    const unverified = body.ngos.find((n: { verified: boolean }) => !n.verified);
+    expect(unverified.name).toBe('Unverified NGO');
+    expect(unverified.ownerAddress).toBe(fakeAddress('A'));
+
+    await app.close();
+  });
+
+  it('returns only unverified NGOs with ?verified=false', async () => {
+    const app = buildServer();
+
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('A'), name: 'Unverified NGO', verified: false },
+    });
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('B'), name: 'Verified NGO', verified: true },
+    });
+
+    const url = '/ngos/all?verified=false';
+    const headers = signAdminRequest(adminKeypair, 'GET', url);
+    const response = await app.inject({ method: 'GET', url, headers });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body.ngos).toHaveLength(1);
+    expect(body.ngos[0].name).toBe('Unverified NGO');
+    expect(body.ngos[0].verified).toBe(false);
+
+    await app.close();
+  });
+
+  it('returns only verified NGOs with ?verified=true', async () => {
+    const app = buildServer();
+
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('A'), name: 'Unverified NGO', verified: false },
+    });
+    await prisma.ngo.create({
+      data: { ownerAddress: fakeAddress('B'), name: 'Verified NGO', verified: true },
+    });
+
+    const url = '/ngos/all?verified=true';
+    const headers = signAdminRequest(adminKeypair, 'GET', url);
+    const response = await app.inject({ method: 'GET', url, headers });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body.ngos).toHaveLength(1);
+    expect(body.ngos[0].name).toBe('Verified NGO');
+    expect(body.ngos[0].verified).toBe(true);
+
+    await app.close();
+  });
+
+  it('400s on an invalid verified value', async () => {
+    const app = buildServer();
+
+    const url = '/ngos/all?verified=maybe';
+    const headers = signAdminRequest(adminKeypair, 'GET', url);
+    const response = await app.inject({ method: 'GET', url, headers });
+    expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
+
+  it('paginates with cursor and returns no overlap between pages', async () => {
+    const app = buildServer();
+
+    // Create 3 NGOs — oldest first so createdAt desc gives C, B, A.
+    for (const char of ['A', 'B', 'C']) {
+      await prisma.ngo.create({
+        data: { ownerAddress: fakeAddress(char), name: `NGO ${char}`, verified: false },
+      });
+    }
+
+    const firstUrl = '/ngos/all?limit=2';
+    const firstHeaders = signAdminRequest(adminKeypair, 'GET', firstUrl);
+    const firstPage = await app.inject({ method: 'GET', url: firstUrl, headers: firstHeaders });
+    expect(firstPage.statusCode).toBe(200);
+
+    const firstBody = firstPage.json();
+    expect(firstBody.ngos).toHaveLength(2);
+    expect(firstBody.nextCursor).not.toBeNull();
+    const firstIds = firstBody.ngos.map((n: { id: string }) => n.id);
+
+    const secondUrl = `/ngos/all?limit=2&cursor=${firstBody.nextCursor}`;
+    const secondHeaders = signAdminRequest(adminKeypair, 'GET', secondUrl);
+    const secondPage = await app.inject({ method: 'GET', url: secondUrl, headers: secondHeaders });
+    expect(secondPage.statusCode).toBe(200);
+
+    const secondBody = secondPage.json();
+    expect(secondBody.ngos).toHaveLength(1);
+    expect(secondBody.nextCursor).toBeNull();
+
+    // No overlap between pages.
+    const secondIds = secondBody.ngos.map((n: { id: string }) => n.id);
+    expect(secondIds.some((id: string) => firstIds.includes(id))).toBe(false);
 
     await app.close();
   });
